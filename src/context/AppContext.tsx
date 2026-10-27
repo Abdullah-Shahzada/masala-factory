@@ -231,6 +231,72 @@ export const loadStoredFactories = (): Factory[] => {
   return INITIAL_FACTORIES;
 };
 
+const INITIAL_SUPPLIER_PAYMENTS: SupplierPayment[] = [
+  {
+    id: 'sp-101',
+    receiptNumber: 'SP-101',
+    supplierId: 'p-201',
+    supplierName: 'Chilli Growers Farmers Co-op',
+    purchaseBillId: 'pb-701',
+    purchaseBillNumber: 'SUP-882',
+    paymentDate: '2026-09-28',
+    amountPaid: 85000,
+    paymentMethod: 'Bank Transfer',
+    referenceNo: 'Meezan-SUP-091',
+    branchId: 'b1',
+    remainingPayable: 100000,
+    proofUrl: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=500&auto=format&fit=crop&q=60',
+    proofStatus: 'Proof Attached',
+    notes: 'Initial advance via bank transfer for red chilli lot.',
+    createdAt: '2026-09-28T10:30:00Z'
+  },
+  {
+    id: 'sp-102',
+    receiptNumber: 'SP-INIT-SUP-883',
+    supplierId: 'p-202',
+    supplierName: 'Packages Limited',
+    purchaseBillId: 'pb-702',
+    purchaseBillNumber: 'SUP-883',
+    paymentDate: '2026-10-01',
+    amountPaid: 127500,
+    paymentMethod: 'Bank Transfer',
+    referenceNo: 'Meezan-PKG-7712',
+    branchId: 'b1',
+    remainingPayable: 0,
+    proofStatus: 'Not Required',
+    notes: 'Initial full payment for custom foil packaging.',
+    createdAt: '2026-10-01T11:30:00Z'
+  }
+];
+
+const loadLocalStorage = <T,>(key: string, fallback: T): T => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return fallback;
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) ? parsed.length > 0 : parsed) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn(`Could not read ${key} from localStorage`, err);
+  }
+  return fallback;
+};
+
+const saveLocalStorage = <T,>(key: string, data: T) => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+  } catch (err) {
+    console.warn(`Error saving ${key} to localStorage:`, err);
+  }
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [factories, setFactories] = useState<Factory[]>(loadStoredFactories);
   const [selectedFactoryId, setSelectedFactoryId] = useState<string>('all');
@@ -397,14 +463,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const [parties, setParties] = useState<Party[]>(INITIAL_PARTIES);
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [salesBills, setSalesBills] = useState<SalesBill[]>(INITIAL_SALES_BILLS);
-  const [paymentsReceived, setPaymentsReceived] = useState<PaymentReceived[]>(INITIAL_PAYMENTS_RECEIVED);
-  const [purchases, setPurchases] = useState<PurchaseBill[]>(INITIAL_PURCHASES);
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
-  const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(INITIAL_SCHEDULE);
+  const [parties, setParties] = useState<Party[]>(() => loadLocalStorage('MF_PARTIES', INITIAL_PARTIES));
+  const [products, setProducts] = useState<Product[]>(() => loadLocalStorage('MF_PRODUCTS', INITIAL_PRODUCTS));
+  const [salesBills, setSalesBills] = useState<SalesBill[]>(() => loadLocalStorage('MF_SALES_BILLS', INITIAL_SALES_BILLS));
+  const [paymentsReceived, setPaymentsReceived] = useState<PaymentReceived[]>(() => loadLocalStorage('MF_PAYMENTS', INITIAL_PAYMENTS_RECEIVED));
+  const [purchases, setPurchases] = useState<PurchaseBill[]>(() => loadLocalStorage('MF_PURCHASES', INITIAL_PURCHASES));
+  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>(() => loadLocalStorage('MF_SUPPLIER_PAYMENTS', INITIAL_SUPPLIER_PAYMENTS));
+  const [expenses, setExpenses] = useState<Expense[]>(() => loadLocalStorage('MF_EXPENSES', INITIAL_EXPENSES));
+  const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(() => loadLocalStorage('MF_SCHEDULES', INITIAL_SCHEDULE));
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+
+  // Sync state to LocalStorage for instant offline persistence & zero data loss on refresh
+  useEffect(() => { saveLocalStorage('MF_PARTIES', parties); }, [parties]);
+  useEffect(() => { saveLocalStorage('MF_PRODUCTS', products); }, [products]);
+  useEffect(() => { saveLocalStorage('MF_SALES_BILLS', salesBills); }, [salesBills]);
+  useEffect(() => { saveLocalStorage('MF_PAYMENTS', paymentsReceived); }, [paymentsReceived]);
+  useEffect(() => { saveLocalStorage('MF_PURCHASES', purchases); }, [purchases]);
+  useEffect(() => { saveLocalStorage('MF_SUPPLIER_PAYMENTS', supplierPayments); }, [supplierPayments]);
+  useEffect(() => { saveLocalStorage('MF_EXPENSES', expenses); }, [expenses]);
+  useEffect(() => { saveLocalStorage('MF_SCHEDULES', scheduleItems); }, [scheduleItems]);
 
   // Live Supabase Database Connection & Synchronization
   useEffect(() => {
@@ -440,8 +517,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isMounted) return;
 
         if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
-        if (dbParties && dbParties.length > 0) setParties(dbParties);
-        if (dbProducts && dbProducts.length > 0) setProducts(dbProducts);
+
+        // If Supabase has parties, load them. If empty, seed initial parties to Supabase
+        if (dbParties && dbParties.length > 0) {
+          setParties(dbParties);
+        } else if (isSupabaseConfigured()) {
+          INITIAL_PARTIES.forEach(p => savePartyToSupabase(p));
+        }
+
+        // If Supabase has products, load them. If empty, seed initial products
+        if (dbProducts && dbProducts.length > 0) {
+          setProducts(dbProducts);
+        } else if (isSupabaseConfigured()) {
+          INITIAL_PRODUCTS.forEach(pr => saveProductToSupabase(pr));
+        }
+
         if (dbBills && dbBills.length > 0) setSalesBills(dbBills);
         if (dbPayments && dbPayments.length > 0) setPaymentsReceived(dbPayments);
         if (dbPurchases && dbPurchases.length > 0) setPurchases(dbPurchases);
@@ -764,44 +854,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       message: `Sales Bill ${bill.billNumber} permanently deleted.`
     };
   };
-
-  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([
-    {
-      id: 'sp-101',
-      receiptNumber: 'SP-101',
-      supplierId: 'p-201',
-      supplierName: 'Chilli Growers Farmers Co-op',
-      purchaseBillId: 'pb-701',
-      purchaseBillNumber: 'SUP-882',
-      paymentDate: '2026-09-28',
-      amountPaid: 85000,
-      paymentMethod: 'Bank Transfer',
-      referenceNo: 'Meezan-SUP-091',
-      branchId: 'b1',
-      remainingPayable: 100000,
-      proofUrl: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=500&auto=format&fit=crop&q=60',
-      proofStatus: 'Proof Attached',
-      notes: 'Initial advance via bank transfer for red chilli lot.',
-      createdAt: '2026-09-28T10:30:00Z'
-    },
-    {
-      id: 'sp-102',
-      receiptNumber: 'SP-INIT-SUP-883',
-      supplierId: 'p-202',
-      supplierName: 'Packages Limited',
-      purchaseBillId: 'pb-702',
-      purchaseBillNumber: 'SUP-883',
-      paymentDate: '2026-10-01',
-      amountPaid: 127500,
-      paymentMethod: 'Bank Transfer',
-      referenceNo: 'Meezan-PKG-7712',
-      branchId: 'b1',
-      remainingPayable: 0,
-      proofStatus: 'Not Required',
-      notes: 'Initial full payment for custom foil packaging.',
-      createdAt: '2026-10-01T11:30:00Z'
-    }
-  ]);
 
   /**
    * Record Payment Received & Consistently Update Allocated Sales Bills

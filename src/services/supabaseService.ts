@@ -2,6 +2,7 @@
  * Supabase Data Service Layer
  * Seamlessly connects the frontend React application to PostgreSQL/Supabase database tables.
  * Maps between database snake_case columns and TypeScript camelCase interfaces.
+ * Provides resilient foreign-key auto-resolution and offline-safe operation.
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -20,6 +21,69 @@ import {
   ScheduleInstallment,
   CompanyProfile
 } from '../types';
+
+/* =========================================================================
+   HELPER: RESOLVE OR ENSURE FOREIGN KEYS
+   ========================================================================= */
+
+const resolveFactoryId = async (providedId?: string): Promise<string> => {
+  if (providedId && providedId.length === 36) return providedId;
+  try {
+    const { data } = await supabase.from('factories').select('id').limit(1).maybeSingle();
+    return data?.id || '00000000-0000-0000-0000-000000000001';
+  } catch {
+    return '00000000-0000-0000-0000-000000000001';
+  }
+};
+
+const resolveOrCreatePartyId = async (
+  partyId?: string,
+  partyName?: string,
+  partyPhone?: string,
+  partyType: 'Customer' | 'Supplier' | 'Both' = 'Customer'
+): Promise<string> => {
+  if (partyId && partyId.length === 36) return partyId;
+  const nameToSearch = (partyName || '').trim();
+  if (!nameToSearch) {
+    const { data } = await supabase.from('parties').select('id').limit(1).maybeSingle();
+    return data?.id || '00000000-0000-0000-0000-000000000001';
+  }
+
+  try {
+    // 1. Look up existing party by name
+    const { data: existing } = await supabase
+      .from('parties')
+      .select('id')
+      .ilike('name', nameToSearch)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) return existing.id;
+
+    // 2. Auto-create party to satisfy foreign key constraint
+    const { data: created, error } = await supabase
+      .from('parties')
+      .insert({
+        name: nameToSearch,
+        phone: partyPhone || '03000000000',
+        whatsapp: partyPhone || '03000000000',
+        type: partyType,
+        city: 'Multan',
+        address: ''
+      })
+      .select('id')
+      .single();
+
+    if (!error && created?.id) return created.id;
+
+    // 3. Fallback to any party
+    const { data: fallback } = await supabase.from('parties').select('id').limit(1).maybeSingle();
+    return fallback?.id || '00000000-0000-0000-0000-000000000001';
+  } catch (err) {
+    console.warn('Error resolving party ID:', err);
+    return '00000000-0000-0000-0000-000000000001';
+  }
+};
 
 /* =========================================================================
    1. FACTORIES MODULE
@@ -109,7 +173,7 @@ export const fetchPartiesFromSupabase = async (): Promise<Party[] | null> => {
       city: p.city || '',
       type: p.type,
       notes: p.notes || undefined,
-      createdAt: p.created_at,
+      createdAt: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
       isDeleted: !!p.is_deleted,
       deletedAt: p.deleted_at || undefined,
       deletedBy: p.deleted_by || undefined
@@ -123,8 +187,7 @@ export const fetchPartiesFromSupabase = async (): Promise<Party[] | null> => {
 export const savePartyToSupabase = async (party: Party): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const payload = {
-      id: party.id.length === 36 ? party.id : undefined,
+    const payload: any = {
       name: party.name,
       company_name: party.companyName || null,
       phone: party.phone,
@@ -137,6 +200,10 @@ export const savePartyToSupabase = async (party: Party): Promise<boolean> => {
       deleted_at: party.deletedAt || null,
       deleted_by: party.deletedBy || null
     };
+
+    if (party.id && party.id.length === 36) {
+      payload.id = party.id;
+    }
 
     const { error } = await supabase
       .from('parties')
@@ -185,8 +252,7 @@ export const fetchProductsFromSupabase = async (): Promise<Product[] | null> => 
 export const saveProductToSupabase = async (product: Product): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const payload = {
-      id: product.id.length === 36 ? product.id : undefined,
+    const payload: any = {
       name: product.name,
       category: product.category,
       unit: product.unit || 'KG',
@@ -194,6 +260,10 @@ export const saveProductToSupabase = async (product: Product): Promise<boolean> 
       stock_qty: product.stockQty || 0,
       description: product.description || null
     };
+
+    if (product.id && product.id.length === 36) {
+      payload.id = product.id;
+    }
 
     const { error } = await supabase
       .from('products')
@@ -236,7 +306,7 @@ export const fetchSalesBillsFromSupabase = async (): Promise<SalesBill[] | null>
       billDate: b.bill_date,
       billTime: b.bill_time || undefined,
       branchId: b.factory_id,
-      branchName: b.party_name,
+      branchName: b.party_name || 'Plant 1',
       items: (b.sales_bill_items || []).map((item: any): BillItem => ({
         id: item.id,
         productId: item.product_id || '',
@@ -244,7 +314,7 @@ export const fetchSalesBillsFromSupabase = async (): Promise<SalesBill[] | null>
         quantity: Number(item.quantity),
         unit: item.unit || 'KG',
         rate: Number(item.rate),
-        lineTotal: Number(item.line_total)
+        lineTotal: Number(item.amount ?? item.line_total ?? (Number(item.quantity) * Number(item.rate)))
       })),
       grandTotal: Number(b.grand_total),
       receivedAmount: Number(b.received_amount) || 0,
@@ -267,26 +337,13 @@ export const fetchSalesBillsFromSupabase = async (): Promise<SalesBill[] | null>
 export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: string, partyDbId?: string): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const targetFactoryId = factoryDbId || (bill.branchId.length === 36 ? bill.branchId : '00000000-0000-0000-0000-000000000001');
-    const targetPartyId = partyDbId || (bill.partyId.length === 36 ? bill.partyId : null);
+    const targetFactoryId = await resolveFactoryId(factoryDbId || bill.branchId);
+    const targetPartyId = await resolveOrCreatePartyId(partyDbId || bill.partyId, bill.partyName, bill.partyPhone, 'Customer');
 
-    if (!targetPartyId) {
-      // Find party UUID from parties table by name
-      const { data: pData } = await supabase
-        .from('parties')
-        .select('id')
-        .eq('name', bill.partyName)
-        .maybeSingle();
-      if (pData?.id) {
-        bill.partyId = pData.id;
-      }
-    }
-
-    const billPayload = {
-      id: bill.id.length === 36 ? bill.id : undefined,
+    const billPayload: any = {
       factory_id: targetFactoryId,
       bill_number: bill.billNumber,
-      party_id: bill.partyId.length === 36 ? bill.partyId : '10000000-0000-0000-0000-000000000001',
+      party_id: targetPartyId,
       party_name: bill.partyName,
       party_phone: bill.partyPhone || '',
       bill_date: bill.billDate,
@@ -303,6 +360,10 @@ export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: str
       deleted_by: bill.deletedBy || null
     };
 
+    if (bill.id && bill.id.length === 36) {
+      billPayload.id = bill.id;
+    }
+
     const { data: savedBill, error: billError } = await supabase
       .from('sales_bills')
       .upsert(billPayload, { onConflict: 'factory_id,bill_number' })
@@ -315,8 +376,7 @@ export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: str
     }
 
     // Save line items
-    if (savedBill && bill.items && bill.items.length > 0) {
-      // Clear existing items for this bill then insert fresh
+    if (savedBill?.id && bill.items && bill.items.length > 0) {
       await supabase.from('sales_bill_items').delete().eq('bill_id', savedBill.id);
 
       const itemsPayload = bill.items.map(item => ({
@@ -326,7 +386,7 @@ export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: str
         quantity: item.quantity,
         unit: item.unit || 'KG',
         rate: item.rate,
-        line_total: item.lineTotal
+        amount: item.lineTotal // Database column is 'amount'
       }));
 
       await supabase.from('sales_bill_items').insert(itemsPayload);
@@ -362,14 +422,14 @@ export const fetchPaymentsReceivedFromSupabase = async (): Promise<PaymentReceiv
       partyId: p.party_id,
       partyName: p.party_name,
       partyPhone: p.party_phone || undefined,
-      amountReceived: Number(p.amount_received),
+      amountReceived: Number(p.amount ?? p.amount_received ?? 0),
       paymentDate: p.payment_date,
       paymentTime: p.payment_time || undefined,
       paymentMethod: p.payment_method,
       referenceNo: p.reference_no || undefined,
       proofUrl: p.proof_url || undefined,
-      proofStatus: p.proof_status || undefined,
-      status: p.status,
+      proofStatus: p.proof_status || 'Verified',
+      status: p.status || 'Completed',
       isInitialPayment: !!p.is_initial_payment,
       notes: p.notes || undefined,
       branchId: p.factory_id,
@@ -377,15 +437,15 @@ export const fetchPaymentsReceivedFromSupabase = async (): Promise<PaymentReceiv
       allocatedBillIds: (p.payment_allocations || []).map((a: any) => a.bill_id),
       allocations: (p.payment_allocations || []).map((a: any): PaymentAllocation => ({
         billId: a.bill_id,
-        billNumber: a.bill_number,
-        amount: Number(a.amount)
+        billNumber: a.bill_number || '',
+        amount: Number(a.allocated_amount ?? a.amount ?? 0)
       })),
       isDeleted: !!p.is_deleted,
       deletedAt: p.deleted_at || undefined,
       deletedBy: p.deleted_by || undefined
     }));
   } catch (err) {
-    console.warn('Error fetching payments received from Supabase:', err);
+    console.warn('Error fetching payments from Supabase:', err);
     return null;
   }
 };
@@ -393,22 +453,22 @@ export const fetchPaymentsReceivedFromSupabase = async (): Promise<PaymentReceiv
 export const savePaymentReceivedToSupabase = async (payment: PaymentReceived, factoryDbId?: string): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const targetFactoryId = factoryDbId || (payment.branchId.length === 36 ? payment.branchId : '00000000-0000-0000-0000-000000000001');
+    const targetFactoryId = await resolveFactoryId(factoryDbId || payment.branchId);
+    const targetPartyId = await resolveOrCreatePartyId(payment.partyId, payment.partyName, payment.partyPhone, 'Customer');
 
-    const paymentPayload = {
-      id: payment.id.length === 36 ? payment.id : undefined,
+    const paymentPayload: any = {
       factory_id: targetFactoryId,
       receipt_number: payment.receiptNumber,
-      party_id: payment.partyId.length === 36 ? payment.partyId : '10000000-0000-0000-0000-000000000001',
+      party_id: targetPartyId,
       party_name: payment.partyName,
       party_phone: payment.partyPhone || null,
-      amount_received: payment.amountReceived,
+      amount: payment.amountReceived, // Database column is 'amount'
       payment_date: payment.paymentDate,
       payment_time: payment.paymentTime || null,
       payment_method: payment.paymentMethod,
       reference_no: payment.referenceNo || null,
       proof_url: payment.proofUrl || null,
-      proof_status: payment.proofStatus || 'Not Required',
+      proof_status: payment.proofStatus || 'Verified',
       status: payment.status || 'Completed',
       is_initial_payment: !!payment.isInitialPayment,
       notes: payment.notes || null,
@@ -416,6 +476,10 @@ export const savePaymentReceivedToSupabase = async (payment: PaymentReceived, fa
       deleted_at: payment.deletedAt || null,
       deleted_by: payment.deletedBy || null
     };
+
+    if (payment.id && payment.id.length === 36) {
+      paymentPayload.id = payment.id;
+    }
 
     const { data: savedPayment, error: paymentError } = await supabase
       .from('payments_received')
@@ -428,15 +492,36 @@ export const savePaymentReceivedToSupabase = async (payment: PaymentReceived, fa
       return false;
     }
 
-    if (savedPayment && payment.allocations && payment.allocations.length > 0) {
+    if (savedPayment?.id && payment.allocations && payment.allocations.length > 0) {
       await supabase.from('payment_allocations').delete().eq('payment_id', savedPayment.id);
-      const allocPayload = payment.allocations.map(a => ({
-        payment_id: savedPayment.id,
-        bill_id: a.billId.length === 36 ? a.billId : '30000000-0000-0000-0000-000000000001',
-        bill_number: a.billNumber,
-        amount: a.amount
-      }));
-      await supabase.from('payment_allocations').insert(allocPayload);
+      
+      const allocPayload = [];
+      for (const a of payment.allocations) {
+        // Resolve bill UUID
+        let billId = a.billId;
+        if (!billId || billId.length !== 36) {
+          const { data: bData } = await supabase
+            .from('sales_bills')
+            .select('id')
+            .eq('bill_number', a.billNumber)
+            .limit(1)
+            .maybeSingle();
+          if (bData?.id) billId = bData.id;
+        }
+
+        if (billId && billId.length === 36) {
+          allocPayload.push({
+            payment_id: savedPayment.id,
+            bill_id: billId,
+            bill_number: a.billNumber,
+            allocated_amount: a.amount // Database column is 'allocated_amount'
+          });
+        }
+      }
+
+      if (allocPayload.length > 0) {
+        await supabase.from('payment_allocations').insert(allocPayload);
+      }
     }
 
     return true;
@@ -470,7 +555,7 @@ export const fetchPurchasesFromSupabase = async (): Promise<PurchaseBill[] | nul
       supplierName: p.supplier_name,
       billDate: p.bill_date,
       billTime: p.bill_time || undefined,
-      dueDate: p.due_date,
+      dueDate: p.due_date || p.bill_date,
       branchId: p.factory_id,
       items: (p.purchase_items || []).map((item: any): BillItem => ({
         id: item.id,
@@ -479,10 +564,10 @@ export const fetchPurchasesFromSupabase = async (): Promise<PurchaseBill[] | nul
         quantity: Number(item.quantity),
         unit: item.unit || 'KG',
         rate: Number(item.rate),
-        lineTotal: Number(item.line_total)
+        lineTotal: Number(item.amount ?? item.line_total ?? (Number(item.quantity) * Number(item.rate)))
       })),
       grandTotal: Number(p.grand_total),
-      amountPaid: Number(p.amount_paid) || 0,
+      amountPaid: Number(p.paid_amount ?? p.amount_paid ?? 0),
       outstandingAmount: Number(p.outstanding_amount) || 0,
       status: p.status,
       proofUrl: p.proof_url || undefined,
@@ -502,19 +587,17 @@ export const fetchPurchasesFromSupabase = async (): Promise<PurchaseBill[] | nul
 export const savePurchaseToSupabase = async (purchase: PurchaseBill, factoryDbId?: string): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const targetFactoryId = factoryDbId || (purchase.branchId.length === 36 ? purchase.branchId : '00000000-0000-0000-0000-000000000001');
+    const targetFactoryId = await resolveFactoryId(factoryDbId || purchase.branchId);
+    const targetSupplierId = await resolveOrCreatePartyId(purchase.supplierId, purchase.supplierName, undefined, 'Supplier');
 
-    const purchasePayload = {
-      id: purchase.id.length === 36 ? purchase.id : undefined,
+    const purchasePayload: any = {
       factory_id: targetFactoryId,
       bill_number: purchase.billNumber,
-      supplier_id: purchase.supplierId.length === 36 ? purchase.supplierId : '10000000-0000-0000-0000-000000000003',
+      supplier_id: targetSupplierId,
       supplier_name: purchase.supplierName,
       bill_date: purchase.billDate,
-      bill_time: purchase.billTime || null,
-      due_date: purchase.dueDate || purchase.billDate,
       grand_total: purchase.grandTotal,
-      amount_paid: purchase.amountPaid,
+      paid_amount: purchase.amountPaid, // Database column is 'paid_amount'
       outstanding_amount: purchase.outstandingAmount,
       status: purchase.status,
       proof_url: purchase.proofUrl || null,
@@ -524,6 +607,10 @@ export const savePurchaseToSupabase = async (purchase: PurchaseBill, factoryDbId
       deleted_at: purchase.deletedAt || null,
       deleted_by: purchase.deletedBy || null
     };
+
+    if (purchase.id && purchase.id.length === 36) {
+      purchasePayload.id = purchase.id;
+    }
 
     const { data: savedPurchase, error: pError } = await supabase
       .from('purchases')
@@ -536,15 +623,15 @@ export const savePurchaseToSupabase = async (purchase: PurchaseBill, factoryDbId
       return false;
     }
 
-    if (savedPurchase && purchase.items && purchase.items.length > 0) {
+    if (savedPurchase?.id && purchase.items && purchase.items.length > 0) {
       await supabase.from('purchase_items').delete().eq('purchase_id', savedPurchase.id);
       const itemsPayload = purchase.items.map(item => ({
         purchase_id: savedPurchase.id,
         product_name: item.productName,
-        quantity: Math.round(item.quantity), // Enforce whole integer
+        quantity: Math.round(item.quantity),
         unit: item.unit || 'KG',
         rate: item.rate,
-        line_total: item.lineTotal
+        amount: item.lineTotal // Database column is 'amount'
       }));
       await supabase.from('purchase_items').insert(itemsPayload);
     }
@@ -573,18 +660,18 @@ export const fetchExpensesFromSupabase = async (): Promise<Expense[] | null> => 
     return data.map((e: any): Expense => ({
       id: e.id,
       expenseNumber: e.expense_number,
-      title: e.title,
+      title: e.title || e.category,
       category: e.category,
       amount: Number(e.amount),
       expenseDate: e.expense_date,
       expenseTime: e.expense_time || undefined,
-      branchId: e.factory_id,
       paidTo: e.paid_to,
       paymentMethod: e.payment_method,
       referenceNo: e.reference_no || undefined,
       proofUrl: e.proof_url || undefined,
       proofStatus: e.proof_status || undefined,
-      notes: e.notes || undefined,
+      notes: e.notes || e.description || undefined,
+      branchId: e.factory_id,
       createdAt: e.created_at,
       isDeleted: !!e.is_deleted,
       deletedAt: e.deleted_at || undefined,
@@ -599,13 +686,12 @@ export const fetchExpensesFromSupabase = async (): Promise<Expense[] | null> => 
 export const saveExpenseToSupabase = async (expense: Expense, factoryDbId?: string): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const targetFactoryId = factoryDbId || (expense.branchId.length === 36 ? expense.branchId : '00000000-0000-0000-0000-000000000001');
+    const targetFactoryId = await resolveFactoryId(factoryDbId || expense.branchId);
 
-    const payload = {
-      id: expense.id.length === 36 ? expense.id : undefined,
+    const payload: any = {
       factory_id: targetFactoryId,
       expense_number: expense.expenseNumber,
-      title: expense.title,
+      title: expense.title || expense.category,
       category: expense.category,
       amount: expense.amount,
       expense_date: expense.expenseDate,
@@ -620,6 +706,10 @@ export const saveExpenseToSupabase = async (expense: Expense, factoryDbId?: stri
       deleted_at: expense.deletedAt || null,
       deleted_by: expense.deletedBy || null
     };
+
+    if (expense.id && expense.id.length === 36) {
+      payload.id = expense.id;
+    }
 
     const { error } = await supabase
       .from('expenses')
@@ -714,7 +804,7 @@ export const fetchSupplierPaymentsFromSupabase = async (): Promise<SupplierPayme
       receiptNumber: sp.receipt_number,
       supplierId: sp.supplier_id,
       supplierName: sp.supplier_name,
-      purchaseBillId: sp.purchase_id,
+      purchaseBillId: sp.purchase_id || '',
       purchaseBillNumber: sp.purchase_bill_number,
       paymentDate: sp.payment_date,
       paymentTime: sp.payment_time || undefined,
@@ -745,15 +835,27 @@ export const saveSupplierPaymentToSupabase = async (
 ): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const targetFactoryId = factoryDbId || (payment.branchId.length === 36 ? payment.branchId : '00000000-0000-0000-0000-000000000001');
+    const targetFactoryId = await resolveFactoryId(factoryDbId || payment.branchId);
+    const targetSupplierId = await resolveOrCreatePartyId(supplierDbId || payment.supplierId, payment.supplierName, undefined, 'Supplier');
 
-    const payload = {
-      id: payment.id.length === 36 ? payment.id : undefined,
+    // Resolve purchase UUID if needed
+    let targetPurchaseId = purchaseDbId || (payment.purchaseBillId.length === 36 ? payment.purchaseBillId : null);
+    if (!targetPurchaseId && payment.purchaseBillNumber) {
+      const { data: pData } = await supabase
+        .from('purchases')
+        .select('id')
+        .eq('bill_number', payment.purchaseBillNumber)
+        .limit(1)
+        .maybeSingle();
+      if (pData?.id) targetPurchaseId = pData.id;
+    }
+
+    const payload: any = {
       factory_id: targetFactoryId,
-      purchase_id: purchaseDbId || (payment.purchaseBillId.length === 36 ? payment.purchaseBillId : null),
+      purchase_id: targetPurchaseId,
       receipt_number: payment.receiptNumber,
       purchase_bill_number: payment.purchaseBillNumber,
-      supplier_id: supplierDbId || (payment.supplierId.length === 36 ? payment.supplierId : null),
+      supplier_id: targetSupplierId,
       supplier_name: payment.supplierName,
       amount: payment.amountPaid,
       payment_date: payment.paymentDate,
@@ -768,6 +870,10 @@ export const saveSupplierPaymentToSupabase = async (
       deleted_at: payment.deletedAt || null,
       deleted_by: payment.deletedBy || null
     };
+
+    if (payment.id && payment.id.length === 36) {
+      payload.id = payment.id;
+    }
 
     const { error } = await supabase
       .from('supplier_payments')
@@ -844,13 +950,13 @@ export const savePaymentScheduleToSupabase = async (
 ): Promise<boolean> => {
   if (!isSupabaseConfigured()) return false;
   try {
-    const targetFactoryId = factoryDbId || (item.branchId.length === 36 ? item.branchId : '00000000-0000-0000-0000-000000000001');
+    const targetFactoryId = await resolveFactoryId(factoryDbId || item.branchId);
+    const targetPartyId = await resolveOrCreatePartyId(partyDbId || item.partyId, item.partyName, item.partyPhone);
 
-    const payload = {
-      id: item.id.length === 36 ? item.id : undefined,
+    const payload: any = {
       factory_id: targetFactoryId,
       type: item.type === 'ToPay' ? 'ToPay' : 'ToReceive',
-      party_id: partyDbId || (item.partyId.length === 36 ? item.partyId : null),
+      party_id: targetPartyId,
       party_name: item.partyName,
       party_phone: item.partyPhone || null,
       related_bill_number: item.relatedBillNumber || null,
@@ -867,6 +973,10 @@ export const savePaymentScheduleToSupabase = async (
       deleted_at: item.deletedAt || null,
       deleted_by: item.deletedBy || null
     };
+
+    if (item.id && item.id.length === 36) {
+      payload.id = item.id;
+    }
 
     const { data, error } = await supabase
       .from('payment_schedules')
