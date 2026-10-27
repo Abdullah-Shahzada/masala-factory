@@ -694,3 +694,268 @@ export const saveCompanyProfileToSupabase = async (profile: CompanyProfile): Pro
     return false;
   }
 };
+
+/* =========================================================================
+   9. SUPPLIER PAYMENTS MODULE
+   ========================================================================= */
+
+export const fetchSupplierPaymentsFromSupabase = async (): Promise<SupplierPayment[] | null> => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data, error } = await supabase
+      .from('supplier_payments')
+      .select('*')
+      .order('payment_date', { ascending: false });
+
+    if (error || !data || data.length === 0) return null;
+
+    return data.map((sp: any): SupplierPayment => ({
+      id: sp.id,
+      receiptNumber: sp.receipt_number,
+      supplierId: sp.supplier_id,
+      supplierName: sp.supplier_name,
+      purchaseBillId: sp.purchase_id,
+      purchaseBillNumber: sp.purchase_bill_number,
+      paymentDate: sp.payment_date,
+      paymentTime: sp.payment_time || undefined,
+      amountPaid: Number(sp.amount),
+      paymentMethod: sp.payment_method,
+      referenceNo: sp.reference_no || undefined,
+      proofUrl: sp.proof_url || undefined,
+      proofStatus: sp.proof_status || 'Verified',
+      branchId: sp.factory_id,
+      remainingPayable: Number(sp.remaining_payable || 0),
+      notes: sp.notes || undefined,
+      createdAt: sp.created_at,
+      isDeleted: !!sp.is_deleted,
+      deletedAt: sp.deleted_at || undefined,
+      deletedBy: sp.deleted_by || undefined
+    }));
+  } catch (err) {
+    console.warn('Error fetching supplier payments from Supabase:', err);
+    return null;
+  }
+};
+
+export const saveSupplierPaymentToSupabase = async (
+  payment: SupplierPayment,
+  factoryDbId?: string,
+  supplierDbId?: string,
+  purchaseDbId?: string
+): Promise<boolean> => {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const targetFactoryId = factoryDbId || (payment.branchId.length === 36 ? payment.branchId : '00000000-0000-0000-0000-000000000001');
+
+    const payload = {
+      id: payment.id.length === 36 ? payment.id : undefined,
+      factory_id: targetFactoryId,
+      purchase_id: purchaseDbId || (payment.purchaseBillId.length === 36 ? payment.purchaseBillId : null),
+      receipt_number: payment.receiptNumber,
+      purchase_bill_number: payment.purchaseBillNumber,
+      supplier_id: supplierDbId || (payment.supplierId.length === 36 ? payment.supplierId : null),
+      supplier_name: payment.supplierName,
+      amount: payment.amountPaid,
+      payment_date: payment.paymentDate,
+      payment_time: payment.paymentTime || null,
+      payment_method: payment.paymentMethod,
+      reference_no: payment.referenceNo || null,
+      notes: payment.notes || null,
+      proof_url: payment.proofUrl || null,
+      proof_status: payment.proofStatus || 'Verified',
+      remaining_payable: payment.remainingPayable || 0,
+      is_deleted: !!payment.isDeleted,
+      deleted_at: payment.deletedAt || null,
+      deleted_by: payment.deletedBy || null
+    };
+
+    const { error } = await supabase
+      .from('supplier_payments')
+      .upsert(payload, { onConflict: 'factory_id,receipt_number' });
+
+    if (error) {
+      console.warn('Supabase supplier payment save error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase supplier payment exception:', err);
+    return false;
+  }
+};
+
+/* =========================================================================
+   10. PAYMENT SCHEDULES MODULE
+   ========================================================================= */
+
+export const fetchPaymentSchedulesFromSupabase = async (): Promise<PaymentScheduleItem[] | null> => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data, error } = await supabase
+      .from('payment_schedules')
+      .select('*, schedule_installments(*)')
+      .order('due_date', { ascending: true });
+
+    if (error || !data || data.length === 0) return null;
+
+    return data.map((s: any): PaymentScheduleItem => {
+      const installments: ScheduleInstallment[] = (s.schedule_installments || []).map((ins: any) => ({
+        id: ins.id,
+        installmentNo: ins.installment_number,
+        amount: Number(ins.amount),
+        dueDate: ins.due_date,
+        paidAmount: ins.paid_amount ? Number(ins.paid_amount) : 0,
+        status: ins.status,
+        notes: ins.notes || undefined
+      }));
+
+      return {
+        id: s.id,
+        type: (s.type === 'Pay' || s.type === 'ToPay') ? 'ToPay' : 'ToReceive',
+        partyId: s.party_id,
+        partyName: s.party_name,
+        partyPhone: s.party_phone || undefined,
+        relatedBillNumber: s.related_bill_number || undefined,
+        dueDate: s.due_date,
+        scheduledAmount: Number(s.scheduled_amount || s.amount || 0),
+        paidReceivedAmount: Number(s.paid_received_amount || 0),
+        remainingAmount: Number(s.remaining_amount || s.scheduled_amount || s.amount || 0),
+        branchId: s.factory_id,
+        status: s.status,
+        notes: s.notes || s.description || undefined,
+        parentScheduleId: s.parent_schedule_id || undefined,
+        installmentNo: s.installment_no || undefined,
+        installments: installments.length > 0 ? installments : undefined,
+        isDeleted: !!s.is_deleted,
+        deletedAt: s.deleted_at || undefined,
+        deletedBy: s.deleted_by || undefined
+      };
+    });
+  } catch (err) {
+    console.warn('Error fetching payment schedules from Supabase:', err);
+    return null;
+  }
+};
+
+export const savePaymentScheduleToSupabase = async (
+  item: PaymentScheduleItem,
+  factoryDbId?: string,
+  partyDbId?: string
+): Promise<boolean> => {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const targetFactoryId = factoryDbId || (item.branchId.length === 36 ? item.branchId : '00000000-0000-0000-0000-000000000001');
+
+    const payload = {
+      id: item.id.length === 36 ? item.id : undefined,
+      factory_id: targetFactoryId,
+      type: item.type === 'ToPay' ? 'ToPay' : 'ToReceive',
+      party_id: partyDbId || (item.partyId.length === 36 ? item.partyId : null),
+      party_name: item.partyName,
+      party_phone: item.partyPhone || null,
+      related_bill_number: item.relatedBillNumber || null,
+      due_date: item.dueDate,
+      scheduled_amount: item.scheduledAmount,
+      paid_received_amount: item.paidReceivedAmount || 0,
+      remaining_amount: item.remainingAmount,
+      status: item.status,
+      description: item.notes || null,
+      notes: item.notes || null,
+      installment_no: item.installmentNo || null,
+      parent_schedule_id: item.parentScheduleId && item.parentScheduleId.length === 36 ? item.parentScheduleId : null,
+      is_deleted: !!item.isDeleted,
+      deleted_at: item.deletedAt || null,
+      deleted_by: item.deletedBy || null
+    };
+
+    const { data, error } = await supabase
+      .from('payment_schedules')
+      .upsert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.warn('Supabase schedule save error:', error.message);
+      return false;
+    }
+
+    // Save installments if present
+    if (data?.id && item.installments && item.installments.length > 0) {
+      await supabase.from('schedule_installments').delete().eq('schedule_id', data.id);
+      const installmentRows = item.installments.map((ins, idx) => ({
+        schedule_id: data.id,
+        installment_number: ins.installmentNo || (idx + 1),
+        amount: ins.amount,
+        due_date: ins.dueDate,
+        paid_amount: ins.paidAmount || 0,
+        status: ins.status || 'Pending',
+        notes: ins.notes || null
+      }));
+      await supabase.from('schedule_installments').insert(installmentRows);
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('Supabase schedule exception:', err);
+    return false;
+  }
+};
+
+/* =========================================================================
+   11. GENERIC SOFT DELETE & RESTORE HELPER
+   ========================================================================= */
+
+export const softDeleteRecordInSupabase = async (
+  tableName: 'parties' | 'products' | 'sales_bills' | 'payments_received' | 'purchases' | 'supplier_payments' | 'expenses' | 'payment_schedules',
+  id: string,
+  deletedReason?: string,
+  deletedBy = 'Factory Admin'
+): Promise<boolean> => {
+  if (!isSupabaseConfigured() || !id) return false;
+  try {
+    const { error } = await supabase
+      .from(tableName)
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        deleted_by: deletedBy,
+        ...(deletedReason ? { notes: `[Deleted: ${deletedReason}]` } : {})
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.warn(`Supabase soft-delete error in ${tableName}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Supabase soft-delete exception in ${tableName}:`, err);
+    return false;
+  }
+};
+
+export const restoreRecordInSupabase = async (
+  tableName: 'parties' | 'products' | 'sales_bills' | 'payments_received' | 'purchases' | 'supplier_payments' | 'expenses' | 'payment_schedules',
+  id: string
+): Promise<boolean> => {
+  if (!isSupabaseConfigured() || !id) return false;
+  try {
+    const { error } = await supabase
+      .from(tableName)
+      .update({
+        is_deleted: false,
+        deleted_at: null,
+        deleted_by: null
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.warn(`Supabase restore error in ${tableName}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Supabase restore exception in ${tableName}:`, err);
+    return false;
+  }
+};

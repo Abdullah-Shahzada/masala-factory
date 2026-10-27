@@ -47,7 +47,13 @@ import {
   fetchExpensesFromSupabase,
   saveExpenseToSupabase,
   fetchCompanyProfileFromSupabase,
-  saveCompanyProfileToSupabase
+  saveCompanyProfileToSupabase,
+  fetchSupplierPaymentsFromSupabase,
+  saveSupplierPaymentToSupabase,
+  fetchPaymentSchedulesFromSupabase,
+  savePaymentScheduleToSupabase,
+  softDeleteRecordInSupabase,
+  restoreRecordInSupabase
 } from '../services/supabaseService';
 
 interface AppContextType {
@@ -415,7 +421,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           dbPayments,
           dbPurchases,
           dbExpenses,
-          dbProfile
+          dbProfile,
+          dbSupplierPayments,
+          dbSchedules
         ] = await Promise.all([
           fetchFactoriesFromSupabase(),
           fetchPartiesFromSupabase(),
@@ -424,7 +432,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fetchPaymentsReceivedFromSupabase(),
           fetchPurchasesFromSupabase(),
           fetchExpensesFromSupabase(),
-          fetchCompanyProfileFromSupabase()
+          fetchCompanyProfileFromSupabase(),
+          fetchSupplierPaymentsFromSupabase(),
+          fetchPaymentSchedulesFromSupabase()
         ]);
 
         if (!isMounted) return;
@@ -437,6 +447,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbPurchases && dbPurchases.length > 0) setPurchases(dbPurchases);
         if (dbExpenses && dbExpenses.length > 0) setExpenses(dbExpenses);
         if (dbProfile) setCompanyProfile(dbProfile);
+        if (dbSupplierPayments && dbSupplierPayments.length > 0) setSupplierPayments(dbSupplierPayments);
+        if (dbSchedules && dbSchedules.length > 0) setScheduleItems(dbSchedules);
       } catch (err) {
         console.warn('Could not load live data from Supabase, keeping local state:', err);
       }
@@ -540,6 +552,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedAt: undefined,
       deletedBy: undefined
     } : p));
+    if (isSupabaseConfigured()) {
+      savePartyToSupabase({ ...party, isDeleted: false, deletedAt: undefined, deletedBy: undefined });
+    }
 
     return {
       success: true,
@@ -714,6 +729,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedBy: undefined
       };
     }));
+
+    if (isSupabaseConfigured()) {
+      saveSalesBillToSupabase({
+        ...bill,
+        remainingAmount,
+        status,
+        isDeleted: false,
+        deletedAt: undefined,
+        deletedBy: undefined
+      });
+    }
 
     return {
       success: true,
@@ -994,6 +1020,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: undefined
     } : p));
 
+    if (isSupabaseConfigured()) {
+      savePaymentReceivedToSupabase({
+        ...payment,
+        isDeleted: false,
+        deletedAt: undefined,
+        deletedBy: undefined
+      });
+    }
+
     return {
       success: true,
       message: `Payment Receipt ${payment.receiptNumber} successfully restored to active records.`
@@ -1018,6 +1053,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `sch-${Date.now()}`
     };
     setScheduleItems(prev => [newItem, ...prev]);
+    if (isSupabaseConfigured()) {
+      savePaymentScheduleToSupabase(newItem);
+    }
   };
 
   const addScheduleWithInstallments = (
@@ -1039,10 +1077,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     setScheduleItems(prev => [...createdItems, ...prev]);
+    if (isSupabaseConfigured()) {
+      createdItems.forEach(item => savePaymentScheduleToSupabase(item));
+    }
   };
 
   const updateScheduleStatus = (id: string, status: PaymentScheduleItem['status']) => {
-    setScheduleItems(prev => prev.map(s => s.id === id ? { ...s, status } : s));
+    setScheduleItems(prev => prev.map(s => {
+      if (s.id !== id) return s;
+      const updated = { ...s, status };
+      if (isSupabaseConfigured()) {
+        savePaymentScheduleToSupabase(updated);
+      }
+      return updated;
+    }));
   };
 
   const updateScheduleItem = (id: string, updates: Partial<PaymentScheduleItem>): { success: boolean; message: string } => {
@@ -1057,11 +1105,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const paid = updated.paidReceivedAmount || 0;
       const remaining = Math.max(0, updated.scheduledAmount - paid);
       const status: PaymentScheduleItem['status'] = remaining <= 0 ? 'Completed' : (paid > 0 ? 'Partially Paid' : (updated.status || 'Upcoming'));
-      return {
+      const finalItem = {
         ...updated,
         remainingAmount: remaining,
         status: updates.status || status
       };
+      if (isSupabaseConfigured()) {
+        savePaymentScheduleToSupabase(finalItem);
+      }
+      return finalItem;
     }));
 
     return { success: true, message: 'Schedule item updated successfully.' };
@@ -1073,6 +1125,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `sch-add-${Date.now()}`
     };
     setScheduleItems(prev => [newItem, ...prev]);
+    if (isSupabaseConfigured()) {
+      savePaymentScheduleToSupabase(newItem);
+    }
   };
 
   const softDeleteScheduleItem = (id: string, _passwordInput?: string): { success: boolean; message: string } => {
@@ -1085,6 +1140,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedAt: new Date().toISOString(),
       deletedBy: 'Factory Admin'
     } : s));
+
+    if (isSupabaseConfigured()) {
+      softDeleteRecordInSupabase('payment_schedules', id);
+    }
 
     return { success: true, message: 'Schedule reminder moved to Recently Deleted.' };
   };
@@ -1099,6 +1158,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedAt: undefined,
       deletedBy: undefined
     } : s));
+
+    if (isSupabaseConfigured()) {
+      restoreRecordInSupabase('payment_schedules', id);
+    }
 
     return { success: true, message: 'Schedule reminder restored successfully.' };
   };
@@ -1220,6 +1283,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSupplierPayments(prev => [supplierPaymentRecord, ...prev]);
+    if (isSupabaseConfigured()) {
+      saveSupplierPaymentToSupabase(supplierPaymentRecord);
+    }
 
     return {
       success: true,
@@ -1260,15 +1326,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    setPurchases(prev => prev.map(pb => {
-      if (pb.id !== id) return pb;
-      return {
-        ...pb,
-        isDeleted: true,
-        deletedAt: new Date().toISOString(),
-        deletedBy: 'Factory Admin'
-      };
-    }));
+    const deletedPurchase = {
+      ...purchase,
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: 'Factory Admin'
+    };
+
+    setPurchases(prev => prev.map(pb => pb.id === id ? deletedPurchase : pb));
+
+    if (isSupabaseConfigured()) {
+      savePurchaseToSupabase(deletedPurchase);
+    }
 
     return {
       success: true,
@@ -1289,6 +1358,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedBy: undefined
       };
     }));
+
+    if (isSupabaseConfigured()) {
+      savePurchaseToSupabase({
+        ...purchase,
+        isDeleted: false,
+        deletedAt: undefined,
+        deletedBy: undefined
+      });
+    }
 
     return {
       success: true,
@@ -1330,6 +1408,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Factory Admin'
     } : p));
 
+    if (isSupabaseConfigured()) {
+      softDeleteRecordInSupabase('supplier_payments', id);
+    }
+
     return { success: true, message: `Supplier Payment ${sp.receiptNumber} soft-deleted. Moved to Recently Deleted.` };
   };
 
@@ -1352,6 +1434,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedAt: undefined,
       deletedBy: undefined
     } : p));
+
+    if (isSupabaseConfigured()) {
+      restoreRecordInSupabase('supplier_payments', id);
+    }
 
     return { success: true, message: `Supplier Payment ${sp.receiptNumber} restored successfully.` };
   };
@@ -1422,6 +1508,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedAt: undefined,
       deletedBy: undefined
     } : e));
+
+    if (isSupabaseConfigured()) {
+      saveExpenseToSupabase({
+        ...expense,
+        isDeleted: false,
+        deletedAt: undefined,
+        deletedBy: undefined
+      });
+    }
 
     return { success: true, message: `Expense Voucher ${expense.expenseNumber} restored successfully.` };
   };
