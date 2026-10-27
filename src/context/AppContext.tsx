@@ -30,6 +30,25 @@ import {
   INITIAL_NOTIFICATIONS 
 } from '../data/mockData';
 import { calculatePaymentStatus } from '../utils/formatters';
+import { isSupabaseConfigured } from '../lib/supabase';
+import {
+  fetchFactoriesFromSupabase,
+  saveFactoryToSupabase,
+  fetchPartiesFromSupabase,
+  savePartyToSupabase,
+  fetchProductsFromSupabase,
+  saveProductToSupabase,
+  fetchSalesBillsFromSupabase,
+  saveSalesBillToSupabase,
+  fetchPaymentsReceivedFromSupabase,
+  savePaymentReceivedToSupabase,
+  fetchPurchasesFromSupabase,
+  savePurchaseToSupabase,
+  fetchExpensesFromSupabase,
+  saveExpenseToSupabase,
+  fetchCompanyProfileFromSupabase,
+  saveCompanyProfileToSupabase
+} from '../services/supabaseService';
 
 interface AppContextType {
   // Factory & Branch State
@@ -273,6 +292,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updated = [...factories, newFactory];
     saveFactories(updated);
+    if (isSupabaseConfigured()) {
+      saveFactoryToSupabase(newFactory);
+    }
     return { success: true, message: `Factory "${newFactory.name}" (${newFactory.code}) created successfully.`, factory: newFactory };
   };
 
@@ -301,6 +323,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     saveFactories(updatedList);
+    if (isSupabaseConfigured()) {
+      const f = updatedList.find(item => item.id === id);
+      if (f) saveFactoryToSupabase(f);
+    }
     return { success: true, message: `Factory "${updates.name || existing.name}" updated successfully.` };
   };
 
@@ -321,6 +347,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     saveFactories(updatedList);
+    if (isSupabaseConfigured()) {
+      const f = updatedList.find(item => item.id === id);
+      if (f) saveFactoryToSupabase(f);
+    }
     return {
       success: true,
       message: `Factory "${existing.name}" is now marked as ${newStatus}. All historical transactions remain preserved.`
@@ -354,6 +384,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err) {
         console.warn('Could not save company profile to localStorage', err);
       }
+      if (isSupabaseConfigured()) {
+        saveCompanyProfileToSupabase(updated);
+      }
       return updated;
     });
   };
@@ -366,6 +399,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
   const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(INITIAL_SCHEDULE);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+
+  // Live Supabase Database Connection & Synchronization
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    let isMounted = true;
+    const loadFromSupabase = async () => {
+      try {
+        const [
+          dbFactories,
+          dbParties,
+          dbProducts,
+          dbBills,
+          dbPayments,
+          dbPurchases,
+          dbExpenses,
+          dbProfile
+        ] = await Promise.all([
+          fetchFactoriesFromSupabase(),
+          fetchPartiesFromSupabase(),
+          fetchProductsFromSupabase(),
+          fetchSalesBillsFromSupabase(),
+          fetchPaymentsReceivedFromSupabase(),
+          fetchPurchasesFromSupabase(),
+          fetchExpensesFromSupabase(),
+          fetchCompanyProfileFromSupabase()
+        ]);
+
+        if (!isMounted) return;
+
+        if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
+        if (dbParties && dbParties.length > 0) setParties(dbParties);
+        if (dbProducts && dbProducts.length > 0) setProducts(dbProducts);
+        if (dbBills && dbBills.length > 0) setSalesBills(dbBills);
+        if (dbPayments && dbPayments.length > 0) setPaymentsReceived(dbPayments);
+        if (dbPurchases && dbPurchases.length > 0) setPurchases(dbPurchases);
+        if (dbExpenses && dbExpenses.length > 0) setExpenses(dbExpenses);
+        if (dbProfile) setCompanyProfile(dbProfile);
+      } catch (err) {
+        console.warn('Could not load live data from Supabase, keeping local state:', err);
+      }
+    };
+
+    loadFromSupabase();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Sync Dark Mode class with HTML tag
   useEffect(() => {
@@ -395,6 +477,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString().split('T')[0]
     };
     setParties(prev => [newParty, ...prev]);
+    if (isSupabaseConfigured()) {
+      savePartyToSupabase(newParty);
+    }
     return newParty;
   };
 
@@ -402,7 +487,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const party = parties.find(p => p.id === id);
     if (!party) return { success: false, message: 'Party record not found.' };
 
-    setParties(prev => prev.map(p => p.id === id ? { ...p, ...updatedFields } : p));
+    const updated = { ...party, ...updatedFields };
+    setParties(prev => prev.map(p => p.id === id ? updated : p));
+    if (isSupabaseConfigured()) {
+      savePartyToSupabase(updated);
+    }
 
     // Keep name/phone consistent across active lists
     if (updatedFields.name || updatedFields.phone) {
@@ -424,12 +513,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Do NOT delete historical bills, payments, purchases, expenses or ledger entries.
     // Exclude party from active selectors by setting isDeleted: true.
-    setParties(prev => prev.map(p => p.id === id ? {
-      ...p,
+    const deleted = {
+      ...party,
       isDeleted: true,
       deletedAt: new Date().toISOString(),
-      deletedBy: 'Factory Admin'
-    } : p));
+      deletedBy: 'Admin'
+    };
+    setParties(prev => prev.map(p => p.id === id ? deleted : p));
+    if (isSupabaseConfigured()) {
+      savePartyToSupabase(deleted);
+    }
 
     return {
       success: true,
@@ -472,11 +565,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `prod-${(products.length + 1).toString().padStart(2, '0')}`
     };
     setProducts(prev => [...prev, newProduct]);
+    if (isSupabaseConfigured()) {
+      saveProductToSupabase(newProduct);
+    }
     return newProduct;
   };
 
   const updateProduct = (id: string, updatedFields: Partial<Product>) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedFields } : p));
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+    const updated = { ...product, ...updatedFields };
+    setProducts(prev => prev.map(p => p.id === id ? updated : p));
+    if (isSupabaseConfigured()) {
+      saveProductToSupabase(updated);
+    }
   };
 
   // Sales Bills logic with automatic schedule sync
@@ -494,6 +596,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSalesBills(prev => [newBill, ...prev]);
+    if (isSupabaseConfigured()) {
+      saveSalesBillToSupabase(newBill);
+    }
 
     // If initial payment was received upon bill creation, record a distinct PaymentReceived
     if (billData.receivedAmount > 0) {
@@ -522,6 +627,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createdAt: new Date().toISOString()
       };
       setPaymentsReceived(prev => [initialPaymentRecord, ...prev]);
+      if (isSupabaseConfigured()) {
+        savePaymentReceivedToSupabase(initialPaymentRecord);
+      }
     }
 
     return newBill;
@@ -531,14 +639,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const bill = salesBills.find(b => b.id === id);
     if (!bill) return { success: false, message: 'Sales bill record not found.' };
 
-    setSalesBills(prev => prev.map(b => {
-      if (b.id !== id) return b;
-      const updated = { ...b, ...updatedFields };
-      const grandTotal = updated.items ? updated.items.reduce((sum, i) => sum + i.lineTotal, 0) : updated.grandTotal;
-      const remainingAmount = Math.max(0, grandTotal - updated.receivedAmount);
-      const status = calculatePaymentStatus(grandTotal, updated.receivedAmount);
-      return { ...updated, grandTotal, remainingAmount, status };
-    }));
+    const grandTotal = updatedFields.items ? updatedFields.items.reduce((sum, i) => sum + i.lineTotal, 0) : (updatedFields.grandTotal ?? bill.grandTotal);
+    const recAmt = updatedFields.receivedAmount ?? bill.receivedAmount;
+    const remainingAmount = Math.max(0, grandTotal - recAmt);
+    const status = calculatePaymentStatus(grandTotal, recAmt);
+    const updated = { ...bill, ...updatedFields, grandTotal, remainingAmount, status };
+
+    setSalesBills(prev => prev.map(b => b.id === id ? updated : b));
+    if (isSupabaseConfigured()) {
+      saveSalesBillToSupabase(updated);
+    }
     return { success: true, message: `Sales Bill ${bill.billNumber} updated successfully.` };
   };
 
@@ -563,15 +673,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Mark soft deleted
-    setSalesBills(prev => prev.map(b => {
-      if (b.id !== id) return b;
-      return {
-        ...b,
-        isDeleted: true,
-        deletedAt: new Date().toISOString(),
-        deletedBy: 'Factory Admin'
-      };
-    }));
+    const deletedBill = {
+      ...bill,
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: 'Factory Admin'
+    };
+    setSalesBills(prev => prev.map(b => b.id === id ? deletedBill : b));
+    if (isSupabaseConfigured()) {
+      saveSalesBillToSupabase(deletedBill);
+    }
 
     return {
       success: true,
@@ -714,6 +825,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setPaymentsReceived(prev => [newPayment, ...prev]);
+    if (isSupabaseConfigured()) {
+      savePaymentReceivedToSupabase(newPayment);
+    }
 
     // Update sales bills based on allocations
     setSalesBills(prev => prev.map(bill => {
@@ -1012,6 +1126,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setPurchases(prev => [newPurchase, ...prev]);
+    if (isSupabaseConfigured()) {
+      savePurchaseToSupabase(newPurchase);
+    }
 
     // If initial payment is made upon purchase creation, record separate initial supplier payment receipt
     if (purchaseData.amountPaid > 0) {
@@ -1259,6 +1376,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setExpenses(prev => [newExpense, ...prev]);
+    if (isSupabaseConfigured()) {
+      saveExpenseToSupabase(newExpense);
+    }
     return newExpense;
   };
 
@@ -1266,7 +1386,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const expense = expenses.find(e => e.id === id);
     if (!expense) return { success: false, message: 'Expense record not found.' };
 
-    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    const updated = { ...expense, ...updates };
+    setExpenses(prev => prev.map(e => e.id === id ? updated : e));
+    if (isSupabaseConfigured()) {
+      saveExpenseToSupabase(updated);
+    }
     return { success: true, message: `Expense voucher ${expense.expenseNumber} updated successfully.` };
   };
 
@@ -1274,12 +1398,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const expense = expenses.find(e => e.id === id);
     if (!expense) return { success: false, message: 'Expense record not found.' };
 
-    setExpenses(prev => prev.map(e => e.id === id ? {
-      ...e,
+    const deleted = {
+      ...expense,
       isDeleted: true,
       deletedAt: new Date().toISOString(),
       deletedBy: 'Factory Admin'
-    } : e));
+    };
+    setExpenses(prev => prev.map(e => e.id === id ? deleted : e));
+    if (isSupabaseConfigured()) {
+      saveExpenseToSupabase(deleted);
+    }
 
     return { success: true, message: `Expense Voucher ${expense.expenseNumber} soft-deleted. Moved to Recently Deleted.` };
   };
