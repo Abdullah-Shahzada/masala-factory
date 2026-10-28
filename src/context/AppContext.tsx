@@ -36,8 +36,10 @@ import {
   saveFactoryToSupabase,
   fetchPartiesFromSupabase,
   savePartyToSupabase,
+  insertPartyToSupabase,
   fetchProductsFromSupabase,
   saveProductToSupabase,
+  insertProductToSupabase,
   fetchSalesBillsFromSupabase,
   saveSalesBillToSupabase,
   fetchPaymentsReceivedFromSupabase,
@@ -52,6 +54,7 @@ import {
   saveSupplierPaymentToSupabase,
   fetchPaymentSchedulesFromSupabase,
   savePaymentScheduleToSupabase,
+  insertPaymentScheduleToSupabase,
   softDeleteRecordInSupabase,
   restoreRecordInSupabase
 } from '../services/supabaseService';
@@ -463,14 +466,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const [parties, setParties] = useState<Party[]>(() => loadLocalStorage('MF_PARTIES', INITIAL_PARTIES));
-  const [products, setProducts] = useState<Product[]>(() => loadLocalStorage('MF_PRODUCTS', INITIAL_PRODUCTS));
-  const [salesBills, setSalesBills] = useState<SalesBill[]>(() => loadLocalStorage('MF_SALES_BILLS', INITIAL_SALES_BILLS));
-  const [paymentsReceived, setPaymentsReceived] = useState<PaymentReceived[]>(() => loadLocalStorage('MF_PAYMENTS', INITIAL_PAYMENTS_RECEIVED));
-  const [purchases, setPurchases] = useState<PurchaseBill[]>(() => loadLocalStorage('MF_PURCHASES', INITIAL_PURCHASES));
-  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>(() => loadLocalStorage('MF_SUPPLIER_PAYMENTS', INITIAL_SUPPLIER_PAYMENTS));
-  const [expenses, setExpenses] = useState<Expense[]>(() => loadLocalStorage('MF_EXPENSES', INITIAL_EXPENSES));
-  const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(() => loadLocalStorage('MF_SCHEDULES', INITIAL_SCHEDULE));
+  // When Supabase is configured, start with empty arrays so stale localStorage mock IDs
+  // (like p-101) don't pollute FK relationships. Supabase data loads in the useEffect below.
+  // When offline (no Supabase), fall back to localStorage or INITIAL_* mock data.
+  const [parties, setParties] = useState<Party[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PARTIES', INITIAL_PARTIES)
+  );
+  const [products, setProducts] = useState<Product[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PRODUCTS', INITIAL_PRODUCTS)
+  );
+  const [salesBills, setSalesBills] = useState<SalesBill[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_SALES_BILLS', INITIAL_SALES_BILLS)
+  );
+  const [paymentsReceived, setPaymentsReceived] = useState<PaymentReceived[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PAYMENTS', INITIAL_PAYMENTS_RECEIVED)
+  );
+  const [purchases, setPurchases] = useState<PurchaseBill[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PURCHASES', INITIAL_PURCHASES)
+  );
+  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_SUPPLIER_PAYMENTS', INITIAL_SUPPLIER_PAYMENTS)
+  );
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_EXPENSES', INITIAL_EXPENSES)
+  );
+  const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(() =>
+    isSupabaseConfigured() ? [] : loadLocalStorage('MF_SCHEDULES', INITIAL_SCHEDULE)
+  );
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
 
   // Sync state to LocalStorage for instant offline persistence & zero data loss on refresh
@@ -522,14 +544,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbParties && dbParties.length > 0) {
           setParties(dbParties);
         } else if (isSupabaseConfigured()) {
-          INITIAL_PARTIES.forEach(p => savePartyToSupabase(p));
+          // Seed initial parties and update local state with real UUIDs
+          const seededParties: Party[] = [];
+          for (const p of INITIAL_PARTIES) {
+            const uuid = await insertPartyToSupabase(p);
+            seededParties.push({ ...p, id: uuid || p.id });
+          }
+          if (seededParties.length > 0) setParties(seededParties);
         }
 
         // If Supabase has products, load them. If empty, seed initial products
         if (dbProducts && dbProducts.length > 0) {
           setProducts(dbProducts);
         } else if (isSupabaseConfigured()) {
-          INITIAL_PRODUCTS.forEach(pr => saveProductToSupabase(pr));
+          const seededProducts: Product[] = [];
+          for (const pr of INITIAL_PRODUCTS) {
+            const uuid = await insertProductToSupabase(pr);
+            seededProducts.push({ ...pr, id: uuid || pr.id });
+          }
+          if (seededProducts.length > 0) setProducts(seededProducts);
         }
 
         if (dbBills && dbBills.length > 0) setSalesBills(dbBills);
@@ -572,15 +605,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Parties - returns newly created party
+  // Uses insertPartyToSupabase to get the real UUID from DB and syncs local state immediately
   const addParty = (partyData: Omit<Party, 'id' | 'createdAt'>): Party => {
+    const tempId = `p-${Date.now().toString().slice(-6)}`;
     const newParty: Party = {
       ...partyData,
-      id: `p-${Date.now().toString().slice(-4)}`,
+      id: tempId,
       createdAt: new Date().toISOString().split('T')[0]
     };
     setParties(prev => [newParty, ...prev]);
+
+    // If Supabase is connected, insert and get real UUID, then update local state
     if (isSupabaseConfigured()) {
-      savePartyToSupabase(newParty);
+      insertPartyToSupabase(newParty).then(uuid => {
+        if (uuid) {
+          // Replace tempId with real Supabase UUID in all state arrays
+          setParties(prev => prev.map(p => p.id === tempId ? { ...p, id: uuid } : p));
+          setSalesBills(prev => prev.map(b => b.partyId === tempId ? { ...b, partyId: uuid } : b));
+          setPaymentsReceived(prev => prev.map(pr => pr.partyId === tempId ? { ...pr, partyId: uuid } : pr));
+          setScheduleItems(prev => prev.map(s => s.partyId === tempId ? { ...s, partyId: uuid } : s));
+        } else {
+          console.error('addParty: insertPartyToSupabase returned null — party not saved to Supabase');
+        }
+      });
     }
     return newParty;
   };
@@ -665,13 +712,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Products - returns newly created product
   const addProduct = (productData: Omit<Product, 'id'>): Product => {
+    const tempId = `prod-${Date.now().toString().slice(-6)}`;
     const newProduct: Product = {
       ...productData,
-      id: `prod-${(products.length + 1).toString().padStart(2, '0')}`
+      id: tempId
     };
     setProducts(prev => [...prev, newProduct]);
     if (isSupabaseConfigured()) {
-      saveProductToSupabase(newProduct);
+      insertProductToSupabase(newProduct).then(uuid => {
+        if (uuid) {
+          setProducts(prev => prev.map(p => p.id === tempId ? { ...p, id: uuid } : p));
+        }
+      });
     }
     return newProduct;
   };
@@ -924,6 +976,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
+    // Persist updated sales bill balances to Supabase
+    if (isSupabaseConfigured()) {
+      finalAllocations.forEach(alloc => {
+        const bill = salesBills.find(b => b.id === alloc.billId || b.billNumber === alloc.billNumber);
+        if (bill) {
+          const newReceivedAmount = bill.receivedAmount + alloc.amount;
+          const newRemainingAmount = Math.max(0, bill.grandTotal - newReceivedAmount);
+          const newStatus = calculatePaymentStatus(bill.grandTotal, newReceivedAmount);
+          saveSalesBillToSupabase({
+            ...bill,
+            receivedAmount: newReceivedAmount,
+            remainingAmount: newRemainingAmount,
+            status: newStatus
+          });
+        }
+      });
+    }
+
     return {
       success: true,
       message: `Payment of Rs.${amountReceived.toLocaleString()} successfully recorded and allocated.`
@@ -980,7 +1050,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const payment = paymentsReceived.find(p => p.id === id);
     if (!payment) return { success: false, message: 'Payment record not found.' };
 
-    setPaymentsReceived(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    const updated = { ...payment, ...updates };
+    setPaymentsReceived(prev => prev.map(p => p.id === id ? updated : p));
+    if (isSupabaseConfigured()) {
+      savePaymentReceivedToSupabase(updated);
+    }
     return { success: true, message: `Payment receipt ${payment.receiptNumber} updated successfully.` };
   };
 
@@ -996,12 +1070,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newReceived = Math.max(0, b.receivedAmount - alloc.amount);
         const newRemaining = Math.max(0, b.grandTotal - newReceived);
         const newStatus = calculatePaymentStatus(b.grandTotal, newReceived);
-        return {
+        const updatedBill = {
           ...b,
           receivedAmount: newReceived,
           remainingAmount: newRemaining,
           status: newStatus
         };
+        if (isSupabaseConfigured()) {
+          saveSalesBillToSupabase(updatedBill);
+        }
+        return updatedBill;
       }));
     } else if (payment.allocatedBillIds && payment.allocatedBillIds.length > 0) {
       setSalesBills(prev => prev.map(b => {
@@ -1009,21 +1087,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newReceived = Math.max(0, b.receivedAmount - payment.amountReceived);
         const newRemaining = Math.max(0, b.grandTotal - newReceived);
         const newStatus = calculatePaymentStatus(b.grandTotal, newReceived);
-        return {
+        const updatedBill = {
           ...b,
           receivedAmount: newReceived,
           remainingAmount: newRemaining,
           status: newStatus
         };
+        if (isSupabaseConfigured()) {
+          saveSalesBillToSupabase(updatedBill);
+        }
+        return updatedBill;
       }));
     }
 
-    setPaymentsReceived(prev => prev.map(p => p.id === id ? {
-      ...p,
+    const deletedRecord: PaymentReceived = {
+      ...payment,
       isDeleted: true,
       deletedAt: new Date().toISOString(),
       deletedBy: 'Factory Admin'
-    } : p));
+    };
+    setPaymentsReceived(prev => prev.map(p => p.id === id ? deletedRecord : p));
+    if (isSupabaseConfigured()) {
+      savePaymentReceivedToSupabase(deletedRecord);
+    }
 
     return {
       success: true,
@@ -1043,12 +1129,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newReceived = b.receivedAmount + alloc.amount;
         const newRemaining = Math.max(0, b.grandTotal - newReceived);
         const newStatus = calculatePaymentStatus(b.grandTotal, newReceived);
-        return {
+        const updatedBill = {
           ...b,
           receivedAmount: newReceived,
           remainingAmount: newRemaining,
           status: newStatus
         };
+        if (isSupabaseConfigured()) {
+          saveSalesBillToSupabase(updatedBill);
+        }
+        return updatedBill;
       }));
     } else if (payment.allocatedBillIds && payment.allocatedBillIds.length > 0) {
       setSalesBills(prev => prev.map(b => {
@@ -1056,12 +1146,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newReceived = b.receivedAmount + payment.amountReceived;
         const newRemaining = Math.max(0, b.grandTotal - newReceived);
         const newStatus = calculatePaymentStatus(b.grandTotal, newReceived);
-        return {
+        const updatedBill = {
           ...b,
           receivedAmount: newReceived,
           remainingAmount: newRemaining,
           status: newStatus
         };
+        if (isSupabaseConfigured()) {
+          saveSalesBillToSupabase(updatedBill);
+        }
+        return updatedBill;
       }));
     }
 
@@ -1100,13 +1194,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Payment Schedule management
   const addScheduleItem = (itemData: Omit<PaymentScheduleItem, 'id'>) => {
+    const tempId = `sch-${Date.now()}`;
     const newItem: PaymentScheduleItem = {
       ...itemData,
-      id: `sch-${Date.now()}`
+      id: tempId
     };
     setScheduleItems(prev => [newItem, ...prev]);
     if (isSupabaseConfigured()) {
-      savePaymentScheduleToSupabase(newItem);
+      insertPaymentScheduleToSupabase(newItem).then(uuid => {
+        if (uuid) {
+          setScheduleItems(prev => prev.map(s => s.id === tempId ? { ...s, id: uuid } : s));
+        }
+      });
     }
   };
 
@@ -1313,6 +1412,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
+    if (isSupabaseConfigured()) {
+      savePurchaseToSupabase({
+        ...purchase,
+        amountPaid: newPaid,
+        outstandingAmount: newOutstanding,
+        status: newStatus
+      });
+    }
+
     const receiptNumber = `SP-${(supplierPayments.length + 101).toString().padStart(3, '0')}`;
     const supplierPaymentRecord: SupplierPayment = {
       id: `sp-${Date.now()}`,
@@ -1356,12 +1464,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const grandTotal = updated.items ? updated.items.reduce((sum, i) => sum + i.lineTotal, 0) : updated.grandTotal;
       const outstandingAmount = Math.max(0, grandTotal - updated.amountPaid);
       const status = calculatePaymentStatus(grandTotal, updated.amountPaid);
-      return {
+      const finalUpdated = {
         ...updated,
         grandTotal,
         outstandingAmount,
         status
       };
+      if (isSupabaseConfigured()) {
+        savePurchaseToSupabase(finalUpdated);
+      }
+      return finalUpdated;
     }));
     return { success: true, message: `Supplier Purchase ${purchase.billNumber} updated successfully.` };
   };

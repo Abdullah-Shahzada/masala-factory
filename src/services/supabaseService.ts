@@ -44,44 +44,61 @@ const resolveOrCreatePartyId = async (
 ): Promise<string> => {
   if (partyId && partyId.length === 36) return partyId;
   const nameToSearch = (partyName || '').trim();
-  if (!nameToSearch) {
-    const { data } = await supabase.from('parties').select('id').limit(1).maybeSingle();
-    return data?.id || '00000000-0000-0000-0000-000000000001';
-  }
 
   try {
-    // 1. Look up existing party by name
-    const { data: existing } = await supabase
-      .from('parties')
-      .select('id')
-      .ilike('name', nameToSearch)
-      .limit(1)
-      .maybeSingle();
+    if (nameToSearch) {
+      // 1. Look up existing party by name
+      const { data: existing } = await supabase
+        .from('parties')
+        .select('id')
+        .ilike('name', nameToSearch)
+        .limit(1)
+        .maybeSingle();
 
-    if (existing?.id) return existing.id;
+      if (existing?.id) return existing.id;
 
-    // 2. Auto-create party to satisfy foreign key constraint
-    const { data: created, error } = await supabase
+      // 2. Auto-create party to satisfy foreign key constraint
+      const { data: created, error } = await supabase
+        .from('parties')
+        .insert({
+          name: nameToSearch,
+          phone: partyPhone || '03000000000',
+          whatsapp: partyPhone || '03000000000',
+          type: partyType,
+          city: 'Multan',
+          address: ''
+        })
+        .select('id')
+        .single();
+
+      if (!error && created?.id) return created.id;
+    }
+
+    // 3. Fallback to any active party in the database
+    const { data: fallback } = await supabase.from('parties').select('id').limit(1).maybeSingle();
+    if (fallback?.id) return fallback.id;
+
+    // 4. Emergency auto-create if parties table is completely empty
+    const { data: emergency } = await supabase
       .from('parties')
       .insert({
-        name: nameToSearch,
-        phone: partyPhone || '03000000000',
-        whatsapp: partyPhone || '03000000000',
-        type: partyType,
-        city: 'Multan',
-        address: ''
+        name: 'General Customer',
+        phone: '03000000000',
+        type: 'Customer',
+        city: 'Multan'
       })
       .select('id')
       .single();
 
-    if (!error && created?.id) return created.id;
-
-    // 3. Fallback to any party
-    const { data: fallback } = await supabase.from('parties').select('id').limit(1).maybeSingle();
-    return fallback?.id || '00000000-0000-0000-0000-000000000001';
+    return emergency?.id || '';
   } catch (err) {
-    console.warn('Error resolving party ID:', err);
-    return '00000000-0000-0000-0000-000000000001';
+    console.error('Error resolving party ID:', err);
+    try {
+      const { data: fallback } = await supabase.from('parties').select('id').limit(1).maybeSingle();
+      return fallback?.id || '';
+    } catch {
+      return '';
+    }
   }
 };
 
@@ -210,13 +227,54 @@ export const savePartyToSupabase = async (party: Party): Promise<boolean> => {
       .upsert(payload);
 
     if (error) {
-      console.warn('Supabase party save error:', error.message);
+      console.error('Supabase party save error:', error.message, error);
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('Supabase party save exception:', err);
+    console.error('Supabase party save exception:', err);
     return false;
+  }
+};
+
+/**
+ * Insert a new party into Supabase and return the database-generated UUID.
+ * Used when creating a new party so local state gets the real DB UUID immediately.
+ */
+export const insertPartyToSupabase = async (party: Omit<Party, 'id'> & { id?: string }): Promise<string | null> => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const payload: any = {
+      name: party.name,
+      company_name: party.companyName || null,
+      phone: party.phone,
+      whatsapp: party.whatsapp || party.phone,
+      address: party.address || '',
+      city: party.city || '',
+      type: party.type,
+      notes: party.notes || null,
+      is_deleted: false
+    };
+
+    // Only include id if it's already a valid UUID (36 chars)
+    if (party.id && party.id.length === 36) {
+      payload.id = party.id;
+    }
+
+    const { data, error } = await supabase
+      .from('parties')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Supabase insertParty error:', error.message, error);
+      return null;
+    }
+    return data?.id || null;
+  } catch (err) {
+    console.error('Supabase insertParty exception:', err);
+    return null;
   }
 };
 
@@ -270,13 +328,49 @@ export const saveProductToSupabase = async (product: Product): Promise<boolean> 
       .upsert(payload);
 
     if (error) {
-      console.warn('Supabase product save error:', error.message);
+      console.error('Supabase product save error:', error.message, error);
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('Supabase product save exception:', err);
+    console.error('Supabase product save exception:', err);
     return false;
+  }
+};
+
+/**
+ * Insert a new product into Supabase and return the database-generated UUID.
+ */
+export const insertProductToSupabase = async (product: Omit<Product, 'id'> & { id?: string }): Promise<string | null> => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const payload: any = {
+      name: product.name,
+      category: product.category,
+      unit: product.unit || 'KG',
+      default_rate: product.defaultRate,
+      stock_qty: product.stockQty || 0,
+      description: product.description || null
+    };
+
+    if (product.id && product.id.length === 36) {
+      payload.id = product.id;
+    }
+
+    const { data, error } = await supabase
+      .from('products')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Supabase insertProduct error:', error.message, error);
+      return null;
+    }
+    return data?.id || null;
+  } catch (err) {
+    console.error('Supabase insertProduct exception:', err);
+    return null;
   }
 };
 
@@ -371,7 +465,7 @@ export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: str
       .single();
 
     if (billError) {
-      console.warn('Supabase sales bill save error:', billError.message);
+      console.error('Supabase sales bill save error:', billError.message, billError);
       return false;
     }
 
@@ -854,7 +948,7 @@ export const saveSupplierPaymentToSupabase = async (
       factory_id: targetFactoryId,
       purchase_id: targetPurchaseId,
       receipt_number: payment.receiptNumber,
-      purchase_bill_number: payment.purchaseBillNumber,
+      purchase_bill_number: payment.purchaseBillNumber || `PB-${payment.receiptNumber}`, // NOT NULL in DB
       supplier_id: targetSupplierId,
       supplier_name: payment.supplierName,
       amount: payment.amountPaid,
@@ -1006,8 +1100,78 @@ export const savePaymentScheduleToSupabase = async (
 
     return true;
   } catch (err) {
-    console.warn('Supabase schedule exception:', err);
+    console.error('Supabase schedule exception:', err);
     return false;
+  }
+};
+
+/**
+ * Insert a new payment schedule into Supabase and return the database-generated UUID.
+ */
+export const insertPaymentScheduleToSupabase = async (
+  item: PaymentScheduleItem,
+  factoryDbId?: string,
+  partyDbId?: string
+): Promise<string | null> => {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const targetFactoryId = await resolveFactoryId(factoryDbId || item.branchId);
+    const targetPartyId = await resolveOrCreatePartyId(partyDbId || item.partyId, item.partyName, item.partyPhone);
+
+    const payload: any = {
+      factory_id: targetFactoryId,
+      type: item.type === 'ToPay' ? 'ToPay' : 'ToReceive',
+      party_id: targetPartyId,
+      party_name: item.partyName,
+      party_phone: item.partyPhone || null,
+      related_bill_number: item.relatedBillNumber || null,
+      due_date: item.dueDate,
+      scheduled_amount: item.scheduledAmount,
+      paid_received_amount: item.paidReceivedAmount || 0,
+      remaining_amount: item.remainingAmount,
+      status: item.status,
+      description: item.notes || null,
+      notes: item.notes || null,
+      installment_no: item.installmentNo || null,
+      parent_schedule_id: item.parentScheduleId && item.parentScheduleId.length === 36 ? item.parentScheduleId : null,
+      is_deleted: !!item.isDeleted,
+      deleted_at: item.deletedAt || null,
+      deleted_by: item.deletedBy || null
+    };
+
+    if (item.id && item.id.length === 36) {
+      payload.id = item.id;
+    }
+
+    const { data, error } = await supabase
+      .from('payment_schedules')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Supabase schedule insert error:', error.message, error);
+      return null;
+    }
+
+    // Save installments if present
+    if (data?.id && item.installments && item.installments.length > 0) {
+      const installmentRows = item.installments.map((ins, idx) => ({
+        schedule_id: data.id,
+        installment_number: ins.installmentNo || (idx + 1),
+        amount: ins.amount,
+        due_date: ins.dueDate,
+        paid_amount: ins.paidAmount || 0,
+        status: ins.status || 'Pending',
+        notes: ins.notes || null
+      }));
+      await supabase.from('schedule_installments').insert(installmentRows);
+    }
+
+    return data?.id || null;
+  } catch (err) {
+    console.error('Supabase schedule insert exception:', err);
+    return null;
   }
 };
 
