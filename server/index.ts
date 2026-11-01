@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import { v4 as uuidv4 } from 'uuid';
 import { pool, testConnection } from './db.js';
 import { initializeDatabase } from './initDb.js';
 
@@ -9,6 +8,19 @@ const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+// Normalize URLs: Ensure all API requests match /api/* routes even if Vercel rewrite strips prefix
+app.use((req, _res, next) => {
+  if (!req.url.startsWith('/api')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
+// Root API test
+app.get('/api', (_req, res) => {
+  res.json({ message: 'Masala Factory API is operational' });
+});
 
 // Helper to generate UUID
 const generateId = () => {
@@ -725,8 +737,12 @@ app.post('/api/payment-schedules', async (req, res) => {
   }
 });
 
-// START SERVER
-app.listen(port, async () => {
-  console.log(`[Express API] Backend Server running on http://localhost:${port}`);
-  await initializeDatabase();
-});
+// START SERVER (only in standalone Node mode, not inside Vercel serverless)
+if (!process.env.VERCEL) {
+  app.listen(port, async () => {
+    console.log(`[Express API] Backend Server running on http://localhost:${port}`);
+    await initializeDatabase();
+  });
+}
+
+export default app;

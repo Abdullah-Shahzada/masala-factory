@@ -18,7 +18,14 @@ import {
 } from '../types';
 
 const env = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
-const API_BASE = (env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
+const getDefaultApiBase = () => {
+  if (env.VITE_API_URL) return env.VITE_API_URL;
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '/api';
+  }
+  return 'http://localhost:5000/api';
+};
+const API_BASE = getDefaultApiBase().replace(/\/+$/, '');
 
 const request = async <T>(endpoint: string, options: RequestInit = {}): Promise<T | null> => {
   try {
