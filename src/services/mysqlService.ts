@@ -40,9 +40,14 @@ const request = async <T>(endpoint: string, options: RequestInit = {}): Promise<
       console.warn(`[API] ${options.method || 'GET'} ${endpoint} failed with status ${res.status}`);
       return null;
     }
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      console.warn(`[API] ${options.method || 'GET'} ${endpoint} received HTML instead of JSON. Ensure Vercel /api routes are active.`);
+      return null;
+    }
     return await res.json();
   } catch (err: any) {
-    // If backend is not running yet, fail gracefully
+    console.warn(`[API] Error on ${endpoint}:`, err.message);
     return null;
   }
 };
