@@ -30,7 +30,7 @@ import {
   INITIAL_NOTIFICATIONS 
 } from '../data/mockData';
 import { calculatePaymentStatus } from '../utils/formatters';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, isDatabaseConnected } from '../lib/supabase';
 import {
   fetchFactoriesFromSupabase,
   saveFactoryToSupabase,
@@ -367,7 +367,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updated = [...factories, newFactory];
     saveFactories(updated);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveFactoryToSupabase(newFactory);
     }
     return { success: true, message: `Factory "${newFactory.name}" (${newFactory.code}) created successfully.`, factory: newFactory };
@@ -398,7 +398,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     saveFactories(updatedList);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       const f = updatedList.find(item => item.id === id);
       if (f) saveFactoryToSupabase(f);
     }
@@ -422,7 +422,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     saveFactories(updatedList);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       const f = updatedList.find(item => item.id === id);
       if (f) saveFactoryToSupabase(f);
     }
@@ -459,39 +459,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err) {
         console.warn('Could not save company profile to localStorage', err);
       }
-      if (isSupabaseConfigured()) {
+      if (isDatabaseConnected()) {
         saveCompanyProfileToSupabase(updated);
       }
       return updated;
     });
   };
 
-  // When Supabase is configured, start with empty arrays so stale localStorage mock IDs
-  // (like p-101) don't pollute FK relationships. Supabase data loads in the useEffect below.
-  // When offline (no Supabase), fall back to localStorage or INITIAL_* mock data.
+  // Start with localStorage or INITIAL_* mock data for instant zero-flicker rendering.
+  // Database data (MySQL or Supabase) synchronizes seamlessly via the useEffect below.
   const [parties, setParties] = useState<Party[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PARTIES', INITIAL_PARTIES)
+    loadLocalStorage('MF_PARTIES', INITIAL_PARTIES)
   );
   const [products, setProducts] = useState<Product[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PRODUCTS', INITIAL_PRODUCTS)
+    loadLocalStorage('MF_PRODUCTS', INITIAL_PRODUCTS)
   );
   const [salesBills, setSalesBills] = useState<SalesBill[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_SALES_BILLS', INITIAL_SALES_BILLS)
+    loadLocalStorage('MF_SALES_BILLS', INITIAL_SALES_BILLS)
   );
   const [paymentsReceived, setPaymentsReceived] = useState<PaymentReceived[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PAYMENTS', INITIAL_PAYMENTS_RECEIVED)
+    loadLocalStorage('MF_PAYMENTS', INITIAL_PAYMENTS_RECEIVED)
   );
   const [purchases, setPurchases] = useState<PurchaseBill[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_PURCHASES', INITIAL_PURCHASES)
+    loadLocalStorage('MF_PURCHASES', INITIAL_PURCHASES)
   );
   const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_SUPPLIER_PAYMENTS', INITIAL_SUPPLIER_PAYMENTS)
+    loadLocalStorage('MF_SUPPLIER_PAYMENTS', INITIAL_SUPPLIER_PAYMENTS)
   );
   const [expenses, setExpenses] = useState<Expense[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_EXPENSES', INITIAL_EXPENSES)
+    loadLocalStorage('MF_EXPENSES', INITIAL_EXPENSES)
   );
   const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(() =>
-    isSupabaseConfigured() ? [] : loadLocalStorage('MF_SCHEDULES', INITIAL_SCHEDULE)
+    loadLocalStorage('MF_SCHEDULES', INITIAL_SCHEDULE)
   );
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
 
@@ -505,9 +504,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { saveLocalStorage('MF_EXPENSES', expenses); }, [expenses]);
   useEffect(() => { saveLocalStorage('MF_SCHEDULES', scheduleItems); }, [scheduleItems]);
 
-  // Live Supabase Database Connection & Synchronization
+  // Live Database Connection & Synchronization (MySQL or Supabase)
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    if (!isDatabaseConnected()) return;
 
     let isMounted = true;
     const loadFromSupabase = async () => {
@@ -543,7 +542,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // If Supabase has parties, load them. If empty, seed initial parties to Supabase
         if (dbParties && dbParties.length > 0) {
           setParties(dbParties);
-        } else if (isSupabaseConfigured()) {
+        } else if (isDatabaseConnected()) {
           // Seed initial parties and update local state with real UUIDs
           const seededParties: Party[] = [];
           for (const p of INITIAL_PARTIES) {
@@ -556,7 +555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // If Supabase has products, load them. If empty, seed initial products
         if (dbProducts && dbProducts.length > 0) {
           setProducts(dbProducts);
-        } else if (isSupabaseConfigured()) {
+        } else if (isDatabaseConnected()) {
           const seededProducts: Product[] = [];
           for (const pr of INITIAL_PRODUCTS) {
             const uuid = await insertProductToSupabase(pr);
@@ -616,7 +615,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setParties(prev => [newParty, ...prev]);
 
     // If Supabase is connected, insert and get real UUID, then update local state
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       insertPartyToSupabase(newParty).then(uuid => {
         if (uuid) {
           // Replace tempId with real Supabase UUID in all state arrays
@@ -638,7 +637,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updated = { ...party, ...updatedFields };
     setParties(prev => prev.map(p => p.id === id ? updated : p));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePartyToSupabase(updated);
     }
 
@@ -669,7 +668,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Admin'
     };
     setParties(prev => prev.map(p => p.id === id ? deleted : p));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePartyToSupabase(deleted);
     }
 
@@ -689,7 +688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedAt: undefined,
       deletedBy: undefined
     } : p));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePartyToSupabase({ ...party, isDeleted: false, deletedAt: undefined, deletedBy: undefined });
     }
 
@@ -718,7 +717,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: tempId
     };
     setProducts(prev => [...prev, newProduct]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       insertProductToSupabase(newProduct).then(uuid => {
         if (uuid) {
           setProducts(prev => prev.map(p => p.id === tempId ? { ...p, id: uuid } : p));
@@ -733,7 +732,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!product) return;
     const updated = { ...product, ...updatedFields };
     setProducts(prev => prev.map(p => p.id === id ? updated : p));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveProductToSupabase(updated);
     }
   };
@@ -753,7 +752,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSalesBills(prev => [newBill, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveSalesBillToSupabase(newBill);
     }
 
@@ -784,7 +783,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createdAt: new Date().toISOString()
       };
       setPaymentsReceived(prev => [initialPaymentRecord, ...prev]);
-      if (isSupabaseConfigured()) {
+      if (isDatabaseConnected()) {
         savePaymentReceivedToSupabase(initialPaymentRecord);
       }
     }
@@ -803,7 +802,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = { ...bill, ...updatedFields, grandTotal, remainingAmount, status };
 
     setSalesBills(prev => prev.map(b => b.id === id ? updated : b));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveSalesBillToSupabase(updated);
     }
     return { success: true, message: `Sales Bill ${bill.billNumber} updated successfully.` };
@@ -837,7 +836,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Factory Admin'
     };
     setSalesBills(prev => prev.map(b => b.id === id ? deletedBill : b));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveSalesBillToSupabase(deletedBill);
     }
 
@@ -872,7 +871,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveSalesBillToSupabase({
         ...bill,
         remainingAmount,
@@ -955,7 +954,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setPaymentsReceived(prev => [newPayment, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePaymentReceivedToSupabase(newPayment);
     }
 
@@ -977,7 +976,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     // Persist updated sales bill balances to Supabase
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       finalAllocations.forEach(alloc => {
         const bill = salesBills.find(b => b.id === alloc.billId || b.billNumber === alloc.billNumber);
         if (bill) {
@@ -1052,7 +1051,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updated = { ...payment, ...updates };
     setPaymentsReceived(prev => prev.map(p => p.id === id ? updated : p));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePaymentReceivedToSupabase(updated);
     }
     return { success: true, message: `Payment receipt ${payment.receiptNumber} updated successfully.` };
@@ -1076,7 +1075,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           remainingAmount: newRemaining,
           status: newStatus
         };
-        if (isSupabaseConfigured()) {
+        if (isDatabaseConnected()) {
           saveSalesBillToSupabase(updatedBill);
         }
         return updatedBill;
@@ -1093,7 +1092,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           remainingAmount: newRemaining,
           status: newStatus
         };
-        if (isSupabaseConfigured()) {
+        if (isDatabaseConnected()) {
           saveSalesBillToSupabase(updatedBill);
         }
         return updatedBill;
@@ -1107,7 +1106,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Factory Admin'
     };
     setPaymentsReceived(prev => prev.map(p => p.id === id ? deletedRecord : p));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePaymentReceivedToSupabase(deletedRecord);
     }
 
@@ -1135,7 +1134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           remainingAmount: newRemaining,
           status: newStatus
         };
-        if (isSupabaseConfigured()) {
+        if (isDatabaseConnected()) {
           saveSalesBillToSupabase(updatedBill);
         }
         return updatedBill;
@@ -1152,7 +1151,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           remainingAmount: newRemaining,
           status: newStatus
         };
-        if (isSupabaseConfigured()) {
+        if (isDatabaseConnected()) {
           saveSalesBillToSupabase(updatedBill);
         }
         return updatedBill;
@@ -1166,7 +1165,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: undefined
     } : p));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePaymentReceivedToSupabase({
         ...payment,
         isDeleted: false,
@@ -1200,7 +1199,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: tempId
     };
     setScheduleItems(prev => [newItem, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       insertPaymentScheduleToSupabase(newItem).then(uuid => {
         if (uuid) {
           setScheduleItems(prev => prev.map(s => s.id === tempId ? { ...s, id: uuid } : s));
@@ -1228,7 +1227,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     setScheduleItems(prev => [...createdItems, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       createdItems.forEach(item => savePaymentScheduleToSupabase(item));
     }
   };
@@ -1237,7 +1236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setScheduleItems(prev => prev.map(s => {
       if (s.id !== id) return s;
       const updated = { ...s, status };
-      if (isSupabaseConfigured()) {
+      if (isDatabaseConnected()) {
         savePaymentScheduleToSupabase(updated);
       }
       return updated;
@@ -1261,7 +1260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         remainingAmount: remaining,
         status: updates.status || status
       };
-      if (isSupabaseConfigured()) {
+      if (isDatabaseConnected()) {
         savePaymentScheduleToSupabase(finalItem);
       }
       return finalItem;
@@ -1276,7 +1275,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `sch-add-${Date.now()}`
     };
     setScheduleItems(prev => [newItem, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePaymentScheduleToSupabase(newItem);
     }
   };
@@ -1292,7 +1291,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Factory Admin'
     } : s));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       softDeleteRecordInSupabase('payment_schedules', id);
     }
 
@@ -1310,7 +1309,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: undefined
     } : s));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       restoreRecordInSupabase('payment_schedules', id);
     }
 
@@ -1340,7 +1339,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setPurchases(prev => [newPurchase, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePurchaseToSupabase(newPurchase);
     }
 
@@ -1412,7 +1411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePurchaseToSupabase({
         ...purchase,
         amountPaid: newPaid,
@@ -1443,7 +1442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSupplierPayments(prev => [supplierPaymentRecord, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveSupplierPaymentToSupabase(supplierPaymentRecord);
     }
 
@@ -1470,7 +1469,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         outstandingAmount,
         status
       };
-      if (isSupabaseConfigured()) {
+      if (isDatabaseConnected()) {
         savePurchaseToSupabase(finalUpdated);
       }
       return finalUpdated;
@@ -1499,7 +1498,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setPurchases(prev => prev.map(pb => pb.id === id ? deletedPurchase : pb));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePurchaseToSupabase(deletedPurchase);
     }
 
@@ -1523,7 +1522,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       savePurchaseToSupabase({
         ...purchase,
         isDeleted: false,
@@ -1572,7 +1571,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Factory Admin'
     } : p));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       softDeleteRecordInSupabase('supplier_payments', id);
     }
 
@@ -1599,7 +1598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: undefined
     } : p));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       restoreRecordInSupabase('supplier_payments', id);
     }
 
@@ -1626,7 +1625,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setExpenses(prev => [newExpense, ...prev]);
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveExpenseToSupabase(newExpense);
     }
     return newExpense;
@@ -1638,7 +1637,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updated = { ...expense, ...updates };
     setExpenses(prev => prev.map(e => e.id === id ? updated : e));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveExpenseToSupabase(updated);
     }
     return { success: true, message: `Expense voucher ${expense.expenseNumber} updated successfully.` };
@@ -1655,7 +1654,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: 'Factory Admin'
     };
     setExpenses(prev => prev.map(e => e.id === id ? deleted : e));
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveExpenseToSupabase(deleted);
     }
 
@@ -1673,7 +1672,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deletedBy: undefined
     } : e));
 
-    if (isSupabaseConfigured()) {
+    if (isDatabaseConnected()) {
       saveExpenseToSupabase({
         ...expense,
         isDeleted: false,

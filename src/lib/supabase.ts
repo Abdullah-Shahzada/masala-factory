@@ -13,11 +13,9 @@ export const supabaseUrl = cleanSupabaseUrl(rawUrl);
 export const supabaseAnonKey = ((env.VITE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_KEY || '') as string).trim();
 
 /**
- * Check if valid Supabase URL or MySQL backend is configured and active.
+ * Check if real Supabase credentials exist and are valid.
  */
-export const isSupabaseConfigured = (): boolean => {
-  const dbMode = ((env.VITE_DATABASE || '') as string).trim().toLowerCase();
-  if (dbMode === 'mysql') return true;
+export const isRealSupabaseConfigured = (): boolean => {
   return Boolean(
     supabaseUrl && 
     supabaseAnonKey && 
@@ -26,13 +24,22 @@ export const isSupabaseConfigured = (): boolean => {
   );
 };
 
-export const isDatabaseConnected = isSupabaseConfigured;
+export const isSupabaseConfigured = isRealSupabaseConfigured;
 
 /**
- * Initialize real Supabase client if configured, otherwise initialize placeholder client
- * that warns gracefully without throwing fatal frontend exceptions on startup.
+ * Check if any database backend (MySQL or Supabase) is active.
  */
-export const supabase: SupabaseClient = isSupabaseConfigured()
+export const isDatabaseConnected = (): boolean => {
+  const dbMode = ((env.VITE_DATABASE || '') as string).trim().toLowerCase();
+  if (dbMode === 'mysql') return true;
+  return isRealSupabaseConfigured();
+};
+
+/**
+ * Initialize real Supabase client ONLY if real Supabase credentials exist,
+ * otherwise initialize placeholder client that warns gracefully without throwing fatal frontend exceptions on startup.
+ */
+export const supabase: SupabaseClient = isRealSupabaseConfigured()
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,
