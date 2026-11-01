@@ -189,21 +189,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!isUserMatch || !isPwdMatch) {
         return {
           success: false,
-          message: 'Invalid Username or Password. (Demo mode: Use username "admin" and password "admin123")'
+          message: 'Invalid Username or Password. Please check your credentials.'
         };
       }
 
-      const demoUser: AuthUser = {
-        id: 'usr-admin-demo',
+      const adminUser: AuthUser = {
+        id: 'usr-admin-01',
         email: cleanId.includes('@') ? cleanId : `${cleanId}@masalafactory.pk`,
         username: cleanId.includes('@') ? cleanId.split('@')[0] : cleanId,
         fullName: 'Factory Administrator',
         role: 'Factory Admin'
       };
 
-      setUser(demoUser);
-      localStorage.setItem(DEMO_AUTH_KEY, JSON.stringify(demoUser));
-      return { success: true, message: 'Login successful (Demo Mode).' };
+      setUser(adminUser);
+      localStorage.setItem(DEMO_AUTH_KEY, JSON.stringify(adminUser));
+      return { success: true, message: 'Login successful.' };
     }
   };
 
@@ -284,7 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       localStorage.setItem(DEMO_PWD_KEY, newPassword);
-      return { success: true, message: 'Password updated successfully for demo session.' };
+      return { success: true, message: 'Password updated successfully.' };
     }
   };
 

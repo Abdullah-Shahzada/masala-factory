@@ -86,13 +86,9 @@ export const Login: React.FC = () => {
               <Building2 className="w-3.5 h-3.5 text-emerald-400" />
               2 Branches (Lahore & Karachi)
             </span>
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
-              isSupabaseMode 
-                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/80' 
-                : 'bg-amber-950/80 text-amber-300 border-amber-800/80'
-            }`}>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">
               <Database className="w-3.5 h-3.5" />
-              {isSupabaseMode ? 'Supabase Auth' : 'Demo Mode'}
+              TiDB Cloud MySQL
             </span>
           </div>
         </div>
@@ -182,31 +178,12 @@ export const Login: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo Helper Hint */}
-          {!isSupabaseMode && (
-            <div className="mt-6 pt-5 border-t border-slate-800 text-center">
-              <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/50 text-[11px] text-slate-400 text-left">
-                <div className="font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Demo Mode Active:
-                </div>
-                <div>Username: <code className="text-white font-mono bg-slate-900 px-1 py-0.5 rounded">admin</code></div>
-                <div>Password: <code className="text-white font-mono bg-slate-900 px-1 py-0.5 rounded">admin123</code></div>
-                <div className="text-[10px] text-slate-500 mt-1">
-                  To connect real Supabase Auth, add <code className="text-amber-400">VITE_SUPABASE_URL</code> and <code className="text-amber-400">VITE_SUPABASE_ANON_KEY</code> to your <code className="text-slate-300">.env</code>.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isSupabaseMode && (
-            <div className="mt-5 text-center">
-              <span className="text-[10px] text-emerald-400 font-medium flex items-center justify-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Protected with Supabase Auth
-              </span>
-            </div>
-          )}
+          <div className="mt-5 text-center">
+            <span className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              Enterprise Encrypted Portal • TiDB Cloud MySQL
+            </span>
+          </div>
         </div>
 
         {/* Footer info */}

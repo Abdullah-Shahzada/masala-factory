@@ -449,7 +449,7 @@ export const Settings: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value="Frontend Interactive Demo (Local Repository)"
+                  value="Production Active (TiDB Cloud MySQL)"
                   disabled
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-500"
                 />
@@ -597,12 +597,8 @@ export const Settings: React.FC = () => {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-slate-500">Auth System:</span>
-              <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] ${
-                isSupabaseMode 
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-              }`}>
-                {isSupabaseMode ? 'Supabase Auth (Cloud Engine)' : 'Local Demo Session'}
+              <span className="px-2 py-0.5 rounded-full font-semibold text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                TiDB Cloud Database Session
               </span>
             </div>
           </div>

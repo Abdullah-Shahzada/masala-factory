@@ -314,7 +314,7 @@ const drawFooter = (doc: jsPDF, totalPages: number) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
-    doc.text('Masala Factory Business Management System — B2B Operations Demo', 14, 286.5);
+    doc.text('Masala Factory Business Management System — B2B Operations', 14, 286.5);
     doc.text(`Page ${i} of ${totalPages}`, 196, 286.5, { align: 'right' });
   }
 };
