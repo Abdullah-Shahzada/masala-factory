@@ -13,9 +13,11 @@ export const supabaseUrl = cleanSupabaseUrl(rawUrl);
 export const supabaseAnonKey = ((env.VITE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_KEY || '') as string).trim();
 
 /**
- * Check if valid Supabase URL and Anon / Publishable Key are configured.
+ * Check if valid Supabase URL or MySQL backend is configured and active.
  */
 export const isSupabaseConfigured = (): boolean => {
+  const dbMode = ((env.VITE_DATABASE || '') as string).trim().toLowerCase();
+  if (dbMode === 'mysql') return true;
   return Boolean(
     supabaseUrl && 
     supabaseAnonKey && 
@@ -23,6 +25,8 @@ export const isSupabaseConfigured = (): boolean => {
     !supabaseUrl.includes('placeholder')
   );
 };
+
+export const isDatabaseConnected = isSupabaseConfigured;
 
 /**
  * Initialize real Supabase client if configured, otherwise initialize placeholder client

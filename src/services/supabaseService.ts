@@ -6,6 +6,13 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import * as mysqlService from './mysqlService';
+
+export const isUsingMySQL = (): boolean => {
+  const env = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
+  const mode = (env.VITE_DATABASE || '').toLowerCase();
+  return mode === 'mysql';
+};
 import {
   Factory,
   Party,
@@ -107,6 +114,10 @@ const resolveOrCreatePartyId = async (
    ========================================================================= */
 
 export const fetchFactoriesFromSupabase = async (): Promise<Factory[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchFactoriesFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -137,6 +148,9 @@ export const fetchFactoriesFromSupabase = async (): Promise<Factory[] | null> =>
 };
 
 export const saveFactoryToSupabase = async (factory: Factory): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.saveFactoryToMySQL(factory);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const payload = {
@@ -171,6 +185,10 @@ export const saveFactoryToSupabase = async (factory: Factory): Promise<boolean> 
    ========================================================================= */
 
 export const fetchPartiesFromSupabase = async (): Promise<Party[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchPartiesFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -202,6 +220,9 @@ export const fetchPartiesFromSupabase = async (): Promise<Party[] | null> => {
 };
 
 export const savePartyToSupabase = async (party: Party): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.savePartyToMySQL(party);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const payload: any = {
@@ -242,6 +263,9 @@ export const savePartyToSupabase = async (party: Party): Promise<boolean> => {
  * Used when creating a new party so local state gets the real DB UUID immediately.
  */
 export const insertPartyToSupabase = async (party: Omit<Party, 'id'> & { id?: string }): Promise<string | null> => {
+  if (isUsingMySQL()) {
+    return mysqlService.insertPartyToMySQL(party);
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const payload: any = {
@@ -283,6 +307,10 @@ export const insertPartyToSupabase = async (party: Omit<Party, 'id'> & { id?: st
    ========================================================================= */
 
 export const fetchProductsFromSupabase = async (): Promise<Product[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchProductsFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -308,6 +336,9 @@ export const fetchProductsFromSupabase = async (): Promise<Product[] | null> => 
 };
 
 export const saveProductToSupabase = async (product: Product): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.saveProductToMySQL(product);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const payload: any = {
@@ -342,6 +373,9 @@ export const saveProductToSupabase = async (product: Product): Promise<boolean> 
  * Insert a new product into Supabase and return the database-generated UUID.
  */
 export const insertProductToSupabase = async (product: Omit<Product, 'id'> & { id?: string }): Promise<string | null> => {
+  if (isUsingMySQL()) {
+    return mysqlService.insertProductToMySQL(product);
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const payload: any = {
@@ -379,6 +413,10 @@ export const insertProductToSupabase = async (product: Omit<Product, 'id'> & { i
    ========================================================================= */
 
 export const fetchSalesBillsFromSupabase = async (): Promise<SalesBill[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchSalesBillsFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -429,6 +467,9 @@ export const fetchSalesBillsFromSupabase = async (): Promise<SalesBill[] | null>
 };
 
 export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: string, partyDbId?: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.saveSalesBillToMySQL(bill);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || bill.branchId);
@@ -498,6 +539,10 @@ export const saveSalesBillToSupabase = async (bill: SalesBill, factoryDbId?: str
    ========================================================================= */
 
 export const fetchPaymentsReceivedFromSupabase = async (): Promise<PaymentReceived[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchPaymentsReceivedFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -545,6 +590,9 @@ export const fetchPaymentsReceivedFromSupabase = async (): Promise<PaymentReceiv
 };
 
 export const savePaymentReceivedToSupabase = async (payment: PaymentReceived, factoryDbId?: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.savePaymentReceivedToMySQL(payment);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || payment.branchId);
@@ -630,6 +678,10 @@ export const savePaymentReceivedToSupabase = async (payment: PaymentReceived, fa
    ========================================================================= */
 
 export const fetchPurchasesFromSupabase = async (): Promise<PurchaseBill[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchPurchasesFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -679,6 +731,9 @@ export const fetchPurchasesFromSupabase = async (): Promise<PurchaseBill[] | nul
 };
 
 export const savePurchaseToSupabase = async (purchase: PurchaseBill, factoryDbId?: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.savePurchaseToMySQL(purchase);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || purchase.branchId);
@@ -742,6 +797,10 @@ export const savePurchaseToSupabase = async (purchase: PurchaseBill, factoryDbId
    ========================================================================= */
 
 export const fetchExpensesFromSupabase = async (): Promise<Expense[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchExpensesFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -778,6 +837,9 @@ export const fetchExpensesFromSupabase = async (): Promise<Expense[] | null> => 
 };
 
 export const saveExpenseToSupabase = async (expense: Expense, factoryDbId?: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.saveExpenseToMySQL(expense);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || expense.branchId);
@@ -825,6 +887,10 @@ export const saveExpenseToSupabase = async (expense: Expense, factoryDbId?: stri
    ========================================================================= */
 
 export const fetchCompanyProfileFromSupabase = async (): Promise<CompanyProfile | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchCompanyProfileFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -851,6 +917,9 @@ export const fetchCompanyProfileFromSupabase = async (): Promise<CompanyProfile 
 };
 
 export const saveCompanyProfileToSupabase = async (profile: CompanyProfile): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.saveCompanyProfileToMySQL(profile);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const payload = {
@@ -884,6 +953,10 @@ export const saveCompanyProfileToSupabase = async (profile: CompanyProfile): Pro
    ========================================================================= */
 
 export const fetchSupplierPaymentsFromSupabase = async (): Promise<SupplierPayment[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchSupplierPaymentsFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -927,6 +1000,9 @@ export const saveSupplierPaymentToSupabase = async (
   supplierDbId?: string,
   purchaseDbId?: string
 ): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.saveSupplierPaymentToMySQL(payment);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || payment.branchId);
@@ -989,6 +1065,10 @@ export const saveSupplierPaymentToSupabase = async (
    ========================================================================= */
 
 export const fetchPaymentSchedulesFromSupabase = async (): Promise<PaymentScheduleItem[] | null> => {
+  if (isUsingMySQL()) {
+    const data = await mysqlService.fetchPaymentSchedulesFromMySQL();
+    if (data !== null) return data;
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const { data, error } = await supabase
@@ -1042,6 +1122,9 @@ export const savePaymentScheduleToSupabase = async (
   factoryDbId?: string,
   partyDbId?: string
 ): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.savePaymentScheduleToMySQL(item);
+  }
   if (!isSupabaseConfigured()) return false;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || item.branchId);
@@ -1113,6 +1196,9 @@ export const insertPaymentScheduleToSupabase = async (
   factoryDbId?: string,
   partyDbId?: string
 ): Promise<string | null> => {
+  if (isUsingMySQL()) {
+    return mysqlService.insertPaymentScheduleToMySQL(item);
+  }
   if (!isSupabaseConfigured()) return null;
   try {
     const targetFactoryId = await resolveFactoryId(factoryDbId || item.branchId);
