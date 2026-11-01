@@ -11,9 +11,11 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const host = process.env.DB_HOST || 'localhost';
 const port = Number(process.env.DB_PORT) || (host.includes('tidbcloud') ? 4000 : 3306);
-const user = process.env.DB_USER || 'root';
+const user = process.env.DB_USER || process.env.DB_USERNAME || 'root';
 const password = process.env.DB_PASSWORD || '';
-const database = process.env.DB_NAME || 'masala_factory';
+// Automatically resolve database name and prevent fallback to system databases like 'sys' or 'test'
+const configuredDb = process.env.DB_NAME || process.env.DB_DATABASE || 'masala_factory';
+const database = (configuredDb === 'sys' || configuredDb === 'test') ? 'masala_factory' : configuredDb;
 
 // Auto-detect SSL: if DB_SSL is explicitly set or if connecting to TiDB Cloud / Aiven
 const isCloud = host.includes('tidbcloud.com') || host.includes('aivencloud.com') || host.includes('planetscale');

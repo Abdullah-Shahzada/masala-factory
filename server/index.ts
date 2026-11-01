@@ -31,6 +31,35 @@ const generateId = () => {
   });
 };
 
+// Foreign-key safe helpers: guarantees foreign key constraints NEVER fail
+const ensureFactoryId = async (conn: any, branchId?: string): Promise<string> => {
+  if (branchId) {
+    const [f]: any = await conn.query('SELECT id FROM factories WHERE id = ? LIMIT 1', [branchId]);
+    if (f.length > 0) return f[0].id;
+  }
+  const [f]: any = await conn.query('SELECT id FROM factories ORDER BY is_main DESC LIMIT 1');
+  if (f.length > 0) return f[0].id;
+  const id = generateId();
+  await conn.query(`INSERT INTO factories (id, code, name, city, address, phone, status, is_main) VALUES (?, 'MLT-01', 'Main Factory', 'Multan', 'Multan Industrial Area', '03001234567', 'Active', 1)`, [id]);
+  return id;
+};
+
+const ensurePartyId = async (conn: any, partyId?: string, partyName?: string, partyPhone?: string, partyType: string = 'Customer'): Promise<string> => {
+  if (partyId) {
+    const [p]: any = await conn.query('SELECT id FROM parties WHERE id = ? LIMIT 1', [partyId]);
+    if (p.length > 0) return p[0].id;
+  }
+  const name = (partyName || 'General Party').trim();
+  const [p]: any = await conn.query('SELECT id FROM parties WHERE name = ? LIMIT 1', [name]);
+  if (p.length > 0) return p[0].id;
+  const id = generateId();
+  await conn.query(
+    `INSERT INTO parties (id, name, phone, whatsapp, type, city, address) VALUES (?, ?, ?, ?, ?, 'Multan', '')`,
+    [id, name, partyPhone || '03000000000', partyPhone || '03000000000', partyType]
+  );
+  return id;
+};
+
 // -------------------------------------------------------------
 // HEALTH CHECK
 // -------------------------------------------------------------
@@ -266,27 +295,9 @@ app.post('/api/sales-bills', async (req, res) => {
     const b = req.body;
     const id = b.id && b.id.length === 36 ? b.id : generateId();
 
-    // Check or resolve factory
-    let factoryId = b.branchId;
-    if (!factoryId || factoryId.length !== 36) {
-      const [f]: any = await conn.query('SELECT id FROM factories LIMIT 1');
-      factoryId = f[0]?.id || '00000000-0000-0000-0000-000000000001';
-    }
-
-    // Check or resolve party
-    let partyId = b.partyId;
-    if (!partyId || partyId.length !== 36) {
-      const [p]: any = await conn.query('SELECT id FROM parties WHERE name = ? LIMIT 1', [b.partyName]);
-      if (p.length > 0) {
-        partyId = p[0].id;
-      } else {
-        partyId = generateId();
-        await conn.query(
-          `INSERT INTO parties (id, name, phone, whatsapp, type, city, address) VALUES (?, ?, ?, ?, 'Customer', 'Multan', '')`,
-          [partyId, b.partyName, b.partyPhone || '03000000000', b.partyPhone || '03000000000']
-        );
-      }
-    }
+    // Check or resolve factory and party reliably
+    const factoryId = await ensureFactoryId(conn, b.branchId);
+    const partyId = await ensurePartyId(conn, b.partyId, b.partyName, b.partyPhone, 'Customer');
 
     await conn.query(
       `INSERT INTO sales_bills (id, factory_id, bill_number, bill_date, bill_time, party_id, party_name, party_phone, grand_total, received_amount, remaining_amount, status, proof_url, proof_status, notes, is_deleted, deleted_at, deleted_by)
@@ -376,17 +387,8 @@ app.post('/api/payments-received', async (req, res) => {
     const p = req.body;
     const id = p.id && p.id.length === 36 ? p.id : generateId();
 
-    let factoryId = p.branchId;
-    if (!factoryId || factoryId.length !== 36) {
-      const [f]: any = await conn.query('SELECT id FROM factories LIMIT 1');
-      factoryId = f[0]?.id || '00000000-0000-0000-0000-000000000001';
-    }
-
-    let partyId = p.partyId;
-    if (!partyId || partyId.length !== 36) {
-      const [pt]: any = await conn.query('SELECT id FROM parties WHERE name = ? LIMIT 1', [p.partyName]);
-      partyId = pt[0]?.id || 'fc0928fb-a21c-4c8c-a77d-1aaa9e0c8466';
-    }
+    const factoryId = await ensureFactoryId(conn, p.branchId);
+    const partyId = await ensurePartyId(conn, p.partyId, p.partyName, p.partyPhone, 'Customer');
 
     await conn.query(
       `INSERT INTO payments_received (id, factory_id, receipt_number, party_id, party_name, party_phone, amount, payment_date, payment_time, payment_method, reference_no, proof_url, proof_status, status, is_initial_payment, notes, is_deleted, deleted_at, deleted_by)
@@ -481,17 +483,8 @@ app.post('/api/purchases', async (req, res) => {
     const p = req.body;
     const id = p.id && p.id.length === 36 ? p.id : generateId();
 
-    let factoryId = p.branchId;
-    if (!factoryId || factoryId.length !== 36) {
-      const [f]: any = await conn.query('SELECT id FROM factories LIMIT 1');
-      factoryId = f[0]?.id || '00000000-0000-0000-0000-000000000001';
-    }
-
-    let supplierId = p.supplierId;
-    if (!supplierId || supplierId.length !== 36) {
-      const [s]: any = await conn.query('SELECT id FROM parties WHERE name = ? LIMIT 1', [p.supplierName]);
-      supplierId = s[0]?.id || 'e7e2aa5e-e95d-4704-b2d0-08a55c0e69c5';
-    }
+    const factoryId = await ensureFactoryId(conn, p.branchId);
+    const supplierId = await ensurePartyId(conn, p.supplierId, p.supplierName, undefined, 'Supplier');
 
     await conn.query(
       `INSERT INTO purchases (id, factory_id, bill_number, supplier_id, supplier_name, bill_date, grand_total, paid_amount, outstanding_amount, status, proof_url, proof_status, notes, is_deleted, deleted_at, deleted_by)
@@ -558,23 +551,15 @@ app.get('/api/supplier-payments', async (_req, res) => {
 });
 
 app.post('/api/supplier-payments', async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const sp = req.body;
     const id = sp.id && sp.id.length === 36 ? sp.id : generateId();
 
-    let factoryId = sp.branchId;
-    if (!factoryId || factoryId.length !== 36) {
-      const [f]: any = await pool.query('SELECT id FROM factories LIMIT 1');
-      factoryId = f[0]?.id || '00000000-0000-0000-0000-000000000001';
-    }
+    const factoryId = await ensureFactoryId(conn, sp.branchId);
+    const supplierId = await ensurePartyId(conn, sp.supplierId, sp.supplierName, undefined, 'Supplier');
 
-    let supplierId = sp.supplierId;
-    if (!supplierId || supplierId.length !== 36) {
-      const [s]: any = await pool.query('SELECT id FROM parties WHERE name = ? LIMIT 1', [sp.supplierName]);
-      supplierId = s[0]?.id || 'e7e2aa5e-e95d-4704-b2d0-08a55c0e69c5';
-    }
-
-    await pool.query(
+    await conn.query(
       `INSERT INTO supplier_payments (id, factory_id, purchase_id, receipt_number, purchase_bill_number, supplier_id, supplier_name, amount, payment_date, payment_time, payment_method, reference_no, proof_url, proof_status, remaining_payable, notes, is_deleted, deleted_at, deleted_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
@@ -585,6 +570,8 @@ app.post('/api/supplier-payments', async (req, res) => {
     res.json({ success: true, id });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
@@ -620,17 +607,14 @@ app.get('/api/expenses', async (_req, res) => {
 });
 
 app.post('/api/expenses', async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const e = req.body;
     const id = e.id && e.id.length === 36 ? e.id : generateId();
 
-    let factoryId = e.branchId;
-    if (!factoryId || factoryId.length !== 36) {
-      const [f]: any = await pool.query('SELECT id FROM factories LIMIT 1');
-      factoryId = f[0]?.id || '00000000-0000-0000-0000-000000000001';
-    }
+    const factoryId = await ensureFactoryId(conn, e.branchId);
 
-    await pool.query(
+    await conn.query(
       `INSERT INTO expenses (id, factory_id, expense_number, title, category, amount, expense_date, expense_time, paid_to, payment_method, reference_no, proof_url, proof_status, description, notes, is_deleted, deleted_at, deleted_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
@@ -642,6 +626,8 @@ app.post('/api/expenses', async (req, res) => {
     res.json({ success: true, id });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
