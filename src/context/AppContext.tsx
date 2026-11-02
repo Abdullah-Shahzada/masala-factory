@@ -564,13 +564,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (seededProducts.length > 0) setProducts(seededProducts);
         }
 
-        if (dbBills && dbBills.length > 0) setSalesBills(dbBills);
-        if (dbPayments && dbPayments.length > 0) setPaymentsReceived(dbPayments);
-        if (dbPurchases && dbPurchases.length > 0) setPurchases(dbPurchases);
-        if (dbExpenses && dbExpenses.length > 0) setExpenses(dbExpenses);
+        if (dbBills !== null) setSalesBills(dbBills);
+        if (dbPayments !== null) setPaymentsReceived(dbPayments);
+        if (dbPurchases !== null) setPurchases(dbPurchases);
+        if (dbExpenses !== null) setExpenses(dbExpenses);
         if (dbProfile) setCompanyProfile(dbProfile);
-        if (dbSupplierPayments && dbSupplierPayments.length > 0) setSupplierPayments(dbSupplierPayments);
-        if (dbSchedules && dbSchedules.length > 0) setScheduleItems(dbSchedules);
+        if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
+        if (dbSchedules !== null) setScheduleItems(dbSchedules);
       } catch (err) {
         console.warn('Could not load live data from Supabase, keeping local state:', err);
       }

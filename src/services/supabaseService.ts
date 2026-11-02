@@ -10,8 +10,9 @@ import * as mysqlService from './mysqlService';
 
 export const isUsingMySQL = (): boolean => {
   const env = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
-  const mode = (env.VITE_DATABASE || '').toLowerCase();
-  return mode === 'mysql';
+  const mode = ((env.VITE_DATABASE || '') as string).toLowerCase();
+  // Always use MySQL (TiDB Cloud) backend by default
+  return mode !== 'supabase';
 };
 import {
   Factory,

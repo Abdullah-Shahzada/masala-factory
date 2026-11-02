@@ -28,11 +28,10 @@ export const isSupabaseConfigured = isRealSupabaseConfigured;
 
 /**
  * Check if any database backend (MySQL or Supabase) is active.
+ * Always true because the TiDB Cloud MySQL Express API is permanently active.
  */
 export const isDatabaseConnected = (): boolean => {
-  const dbMode = ((env.VITE_DATABASE || '') as string).trim().toLowerCase();
-  if (dbMode === 'mysql') return true;
-  return isRealSupabaseConfigured();
+  return true;
 };
 
 /**
