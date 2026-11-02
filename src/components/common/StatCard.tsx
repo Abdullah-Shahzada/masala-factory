@@ -42,26 +42,26 @@ export const StatCard: React.FC<StatCardProps> = ({
   return (
     <div 
       onClick={onClick}
-      className={`relative p-5 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-sm hover:shadow-md transition-all duration-200 ${onClick ? 'cursor-pointer hover:border-emerald-500/50' : ''}`}
+      className={`relative p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:shadow-md transition-all duration-200 ${onClick ? 'cursor-pointer hover:border-emerald-500/50' : ''}`}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
           {title}
         </span>
-        <div className={`p-2.5 rounded-xl border ${colorMap[colorScheme]}`}>
-          <Icon className="w-5 h-5" />
+        <div className={`p-1.5 sm:p-2.5 rounded-xl border shrink-0 ${colorMap[colorScheme]}`}>
+          <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
         </div>
       </div>
 
-      <div className="mt-3">
-        <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+      <div className="mt-2 sm:mt-3">
+        <h3 className="text-base sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white truncate">
           {value}
         </h3>
         {(subtext || badgeText) && (
-          <div className="mt-2 flex items-center justify-between text-xs">
-            {subtext && <span className="text-slate-500 dark:text-slate-400">{subtext}</span>}
+          <div className="mt-1.5 sm:mt-2 flex items-center justify-between gap-1 text-[10px] sm:text-xs">
+            {subtext && <span className="text-slate-500 dark:text-slate-400 truncate">{subtext}</span>}
             {badgeText && (
-              <span className={`px-2 py-0.5 rounded-full font-medium ${badgeColorMap[badgeType]}`}>
+              <span className={`px-1.5 sm:px-2 py-0.5 rounded-full font-medium shrink-0 ${badgeColorMap[badgeType]}`}>
                 {badgeText}
               </span>
             )}

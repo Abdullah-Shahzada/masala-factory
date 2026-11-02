@@ -17,7 +17,14 @@ import {
   ArrowDownRight,
   Plus,
   Receipt,
-  FileText
+  FileText,
+  Activity,
+  ShieldCheck,
+  CheckCircle2,
+  ChevronRight,
+  Phone,
+  Building2,
+  Sparkles
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -27,8 +34,6 @@ import {
   YAxis, 
   Tooltip, 
   CartesianGrid,
-  BarChart,
-  Bar,
   Legend
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
@@ -68,6 +73,11 @@ export const Dashboard: React.FC = () => {
   const totalOutstanding = filteredBills.reduce((sum, b) => sum + b.remainingAmount, 0);
   const totalPurchases = filteredPurchases.reduce((sum, p) => sum + p.grandTotal, 0);
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalOutflows = totalPurchases + totalExpenses;
+  const netCashFlow = totalReceived - totalOutflows;
+
+  // Collection efficiency rate
+  const collectionRate = totalSales > 0 ? Math.min(100, Math.round((totalReceived / totalSales) * 100)) : 100;
 
   const dueTodayItems = filteredSchedule.filter(s => s.status === 'Due Today');
   const overdueItems = filteredSchedule.filter(s => s.status === 'Overdue');
@@ -83,109 +93,152 @@ export const Dashboard: React.FC = () => {
     { month: 'Oct', sales: totalSales, received: totalReceived },
   ];
 
-  // Dynamic expense category data calculated from filtered expenses
-  const expenseByCategory = filteredExpenses.reduce((acc, curr) => {
-    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const dynamicCategoryList = Object.entries(expenseByCategory).map(([category, amount]) => ({
-    category,
-    amount
-  })).sort((a, b) => b.amount - a.amount);
-
-  const expenseCategoryData = dynamicCategoryList.length > 0 
-    ? dynamicCategoryList.slice(0, 5)
-    : [
-        { category: 'Salaries', amount: 380000 },
-        { category: 'Electricity', amount: 145000 },
-        { category: 'Packaging', amount: 42000 },
-        { category: 'Fuel', amount: 35000 },
-        { category: 'Machinery', amount: 28000 },
-      ];
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white shadow-xl relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              Factory Management
-            </span>
-            <span className="text-xs text-slate-400">
-              Branch Scope: {selectedBranchId === 'all' ? `All Factory Branches (${branches.length} Factories)` : branches.find(b => b.id === selectedBranchId)?.name}
-            </span>
+      {/* Header Banner - Executive B2B Presentation */}
+      <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white shadow-xl relative overflow-hidden border border-emerald-900/40">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Factory Management System
+              </span>
+              <span className="text-[11px] sm:text-xs text-slate-300 flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded-md border border-white/10">
+                <Building2 className="w-3 h-3 text-emerald-400" />
+                {selectedBranchId === 'all' ? `All Factory Branches (${branches.length})` : branches.find(b => b.id === selectedBranchId)?.name}
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight mt-2 text-white">
+              Masala Factory Executive Dashboard
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl line-clamp-2 sm:line-clamp-none">
+              Real-time oversight of sales invoices, payment collections, supplier liabilities, and operating cashflow.
+            </p>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight mt-2">
-            Masala Factory Dashboard
-          </h1>
-          <p className="text-xs md:text-sm text-slate-300 mt-1 max-w-xl">
-            Real-time overview of sales bills, customer payments, supplier payables, operating expenses, and payment schedules.
-          </p>
+
+          {/* Quick Action Buttons - 2x2 grid on mobile, flex on desktop */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+            <button
+              onClick={() => navigate('/sales')}
+              className="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Bill</span>
+            </button>
+            <button
+              onClick={() => navigate('/payments')}
+              className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/15 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            >
+              <Receipt className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Record Pay</span>
+            </button>
+            <button
+              onClick={() => setIsPurchaseModalOpen(true)}
+              className="px-3 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-semibold shadow-md shadow-indigo-950/40 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>New Purchase</span>
+            </button>
+            <button
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="px-3 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-semibold shadow-md shadow-rose-950/40 flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>New Expense</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Executive Financial Health & Collection Efficiency Bar */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/40">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                Executive Cashflow & Collection Efficiency
+              </h2>
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Live ratio of billed customer revenue collected into factory accounts
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Collection Rate</div>
+              <div className="text-base sm:text-lg font-extrabold text-emerald-600 dark:text-emerald-400">
+                {collectionRate}%
+              </div>
+            </div>
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+            <div className="text-right hidden sm:block">
+              <div className="text-xs text-slate-500 dark:text-slate-400">Net Cash Flow</div>
+              <div className={`text-base font-extrabold ${netCashFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {formatPKR(netCashFlow)}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Quick Action Buttons */}
-        <div className="relative z-10 flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => navigate('/sales')}
-            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-950/50 flex items-center gap-1.5 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            New Sales Bill
-          </button>
-          <button
-            onClick={() => navigate('/payments')}
-            className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/10 flex items-center gap-1.5 transition-all"
-          >
-            <Receipt className="w-4 h-4" />
-            Record Payment
-          </button>
-          <button
-            onClick={() => setIsPurchaseModalOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-950/50 flex items-center gap-1.5 transition-all"
-          >
-            <ShoppingBag className="w-4 h-4" />
-            New Purchase
-          </button>
-          <button
-            onClick={() => setIsExpenseModalOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-lg shadow-rose-950/50 flex items-center gap-1.5 transition-all"
-          >
-            <Wallet className="w-4 h-4" />
-            New Expense
-          </button>
+        {/* Dual Progress Bar */}
+        <div className="space-y-1.5 pt-1">
+          <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner">
+            <div 
+              style={{ width: `${collectionRate}%` }} 
+              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500 rounded-l-full" 
+              title={`Collected: ${formatPKR(totalReceived)} (${collectionRate}%)`}
+            />
+            <div 
+              style={{ width: `${100 - collectionRate}%` }} 
+              className="h-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500" 
+              title={`Pending: ${formatPKR(totalOutstanding)} (${100 - collectionRate}%)`}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] font-medium text-slate-600 dark:text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              Collected: <strong className="text-slate-900 dark:text-white">{formatPKR(totalReceived)}</strong>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+              Pending Receivables: <strong className="text-slate-900 dark:text-white">{formatPKR(totalOutstanding)}</strong>
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Overdue Alert Banner if any */}
       {overdueItems.length > 0 && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-3">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
             <div className="text-xs">
               <span className="font-bold">Attention: {overdueItems.length} Payment(s) Overdue!</span>
-              <span className="block text-rose-600/80 dark:text-rose-300/80 mt-0.5">
-                Total overdue receivables: {formatPKR(overdueItems.reduce((sum, item) => sum + item.remainingAmount, 0))}
+              <span className="block text-rose-600/80 dark:text-rose-300/80 mt-0.5 text-[11px] sm:text-xs">
+                Total overdue: {formatPKR(overdueItems.reduce((sum, item) => sum + item.remainingAmount, 0))}
               </span>
             </div>
           </div>
           <button
             onClick={() => navigate('/schedule?tab=receive')}
-            className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition-colors"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[11px] sm:text-xs font-semibold hover:bg-rose-700 transition-colors shrink-0"
           >
             View Overdue
           </button>
         </div>
       )}
 
-      {/* KPI Stat Cards Grid (8 Metrics) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Stat Cards Grid - 2 cols on mobile, 4 cols on desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <StatCard
           title="Total Sales"
           value={formatPKR(totalSales)}
-          subtext={`${filteredBills.length} Sales Bills Recorded`}
+          subtext={`${filteredBills.length} Sales Bills`}
           icon={TrendingUp}
           colorScheme="emerald"
           badgeText="Active"
@@ -195,7 +248,7 @@ export const Dashboard: React.FC = () => {
         <StatCard
           title="Payments Received"
           value={formatPKR(totalReceived)}
-          subtext={`${filteredPayments.length} Payment Receipts`}
+          subtext={`${filteredPayments.length} Receipts`}
           icon={DollarSign}
           colorScheme="emerald"
           badgeText="Collected"
@@ -205,7 +258,7 @@ export const Dashboard: React.FC = () => {
         <StatCard
           title="Total Outstanding"
           value={formatPKR(totalOutstanding)}
-          subtext="Pending Customer Receivables"
+          subtext="Pending Receivables"
           icon={Clock}
           colorScheme="amber"
           badgeText="Pending"
@@ -215,7 +268,7 @@ export const Dashboard: React.FC = () => {
         <StatCard
           title="Total Purchases"
           value={formatPKR(totalPurchases)}
-          subtext={`${filteredPurchases.length} Supplier Bills`}
+          subtext={`${filteredPurchases.length} Raw Materials`}
           icon={ShoppingBag}
           colorScheme="indigo"
           onClick={() => navigate('/purchases')}
@@ -223,7 +276,7 @@ export const Dashboard: React.FC = () => {
         <StatCard
           title="Total Expenses"
           value={formatPKR(totalExpenses)}
-          subtext={`${filteredExpenses.length} Factory Expense Claims`}
+          subtext={`${filteredExpenses.length} Expense Claims`}
           icon={Wallet}
           colorScheme="rose"
           onClick={() => navigate('/expenses')}
@@ -260,84 +313,86 @@ export const Dashboard: React.FC = () => {
         />
       </div>
 
-      {/* Analytics Charts & Recent Transactions Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Analytics Charts & Upcoming Reminders Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* Sales Trend Chart (2 Cols) */}
-        <div className="lg:col-span-2 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="lg:col-span-2 p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Monthly Sales & Collection Performance
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                Sales & Collection Trend
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Comparison of total invoiced sales vs actual cash collections in PKR.
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                Invoiced sales versus verified payment cash inflows (PKR)
               </p>
             </div>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg">
-              PKR Currency
+            <span className="text-[11px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-800/40">
+              PKR / Rs.
             </span>
           </div>
 
-          <div className="h-72 w-full pt-4">
+          <div className="h-60 sm:h-72 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#059669" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#059669" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorReceived" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#d97706" stopOpacity={0.4}/>
                     <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(val) => `Rs.${val/1000}k`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} tickFormatter={(val) => `Rs.${val/1000}k`} />
                 <Tooltip 
                   formatter={(value: any) => [formatPKR(Number(value)), 'Amount']}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff', borderRadius: '12px' }}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff', borderRadius: '12px', fontSize: '12px' }}
                 />
-                <Legend />
-                <Area type="monotone" dataKey="sales" name="Total Invoiced Sales" stroke="#16a34a" strokeWidth={2} fillOpacity={1} fill="url(#colorSales)" />
-                <Area type="monotone" dataKey="received" name="Payments Received" stroke="#d97706" strokeWidth={2} fillOpacity={1} fill="url(#colorReceived)" />
+                <Legend wrapperStyle={{ fontSize: '11px' }} />
+                <Area type="monotone" dataKey="sales" name="Invoiced Sales" stroke="#059669" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSales)" />
+                <Area type="monotone" dataKey="received" name="Collected Cash" stroke="#d97706" strokeWidth={2.5} fillOpacity={1} fill="url(#colorReceived)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Upcoming Payment Reminders Widget (1 Col) */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
               Schedule Reminders
             </h3>
             <button 
               onClick={() => navigate('/schedule')} 
-              className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+              className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
             >
-              View All
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+          <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
             {filteredSchedule.length > 0 ? (
               filteredSchedule.slice(0, 5).map(item => (
                 <div 
                   key={item.id}
-                  className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-200 transition-colors flex items-center justify-between"
+                  onClick={() => navigate('/schedule')}
+                  className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-emerald-300 dark:hover:border-slate-700 transition-colors flex items-center justify-between cursor-pointer active:scale-98"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-slate-900 dark:text-white">{item.partyName}</span>
+                  <div className="space-y-0.5 min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-xs text-slate-900 dark:text-white truncate max-w-[120px]">{item.partyName}</span>
                       <StatusBadge status={item.status} size="sm" />
                     </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       Due: {formatDate(item.dueDate)} {item.relatedBillNumber ? `(${item.relatedBillNumber})` : ''}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <span className="font-bold text-xs text-slate-900 dark:text-white block">
                       {formatPKR(item.remainingAmount)}
                     </span>
@@ -356,26 +411,93 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Recent Transactions Feed */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+      {/* Recent Transactions Feed - Dual View (Mobile Cards + Desktop Table) */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3.5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Recent Sales & Bills
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+              Recent Sales & Invoices
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Latest sales bills recorded with real-time payment reconciliation.
+            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+              Latest sales bills with real-time payment reconciliation
             </p>
           </div>
           <button 
             onClick={() => navigate('/sales')}
-            className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+            className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
           >
-            View All Sales
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+        {/* Mobile View: High-End Stack of Cards (< sm) */}
+        <div className="block sm:hidden space-y-2.5">
+          {filteredBills.length > 0 ? (
+            filteredBills.slice(0, 5).map((bill) => (
+              <div 
+                key={bill.id}
+                onClick={() => navigate('/sales')}
+                className="p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50 space-y-2.5 active:bg-slate-100 dark:active:bg-slate-800 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      {bill.billNumber}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {formatDate(bill.billDate)}
+                    </span>
+                  </div>
+                  <StatusBadge status={bill.status} size="sm" />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                      {bill.partyName}
+                    </h4>
+                    {bill.partyPhone && (
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <Phone className="w-2.5 h-2.5" />
+                        {bill.partyPhone}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block">Grand Total</span>
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                      {formatPKR(bill.grandTotal)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Received & Remaining Micro-Pills */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block">Received</span>
+                    <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                      {formatPKR(bill.receivedAmount)}
+                    </span>
+                  </div>
+                  <div className="bg-rose-50 dark:bg-rose-950/30 p-1.5 rounded-lg border border-rose-100 dark:border-rose-900/30 text-right">
+                    <span className="text-[10px] text-rose-600 dark:text-rose-400 block">Remaining</span>
+                    <span className="font-bold text-rose-700 dark:text-rose-300">
+                      {formatPKR(bill.remainingAmount)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No sales bills recorded for the selected branch.
+            </div>
+          )}
+        </div>
+
+        {/* Desktop View: Full Responsive Table (>= sm) */}
+        <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
               <tr>
@@ -392,7 +514,7 @@ export const Dashboard: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredBills.length > 0 ? (
                 filteredBills.slice(0, 5).map((bill) => (
-                  <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="p-3 font-mono font-bold text-emerald-700 dark:text-emerald-400">
                       {bill.billNumber}
                     </td>

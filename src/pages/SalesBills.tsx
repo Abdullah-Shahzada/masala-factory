@@ -772,7 +772,152 @@ export const SalesBills: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+        {/* Mobile View: High-density interactive cards (< sm) */}
+        <div className="block sm:hidden space-y-3">
+          {paginatedBills.length > 0 ? (
+            paginatedBills.map((bill) => (
+              <div 
+                key={bill.id}
+                className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5 shadow-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      {bill.billNumber}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {formatDate(bill.billDate)}
+                    </span>
+                  </div>
+                  {activeTab === 'active' ? (
+                    <StatusBadge status={bill.status} size="sm" />
+                  ) : (
+                    <span className="text-[10px] text-rose-500 font-semibold bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded-md">
+                      Deleted
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      {bill.partyName}
+                    </h4>
+                    {bill.partyPhone && (
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <Phone className="w-2.5 h-2.5" />
+                        {bill.partyPhone}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      Branch: {bill.branchId === 'b1' ? 'Lahore' : 'Karachi'}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] text-slate-400 block">Total</span>
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                      {formatPKR(bill.grandTotal)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Items summary */}
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate bg-white/60 dark:bg-slate-800/80 p-1.5 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+                  {bill.items.map(i => `${i.productName} (x${i.quantity})`).join(', ')}
+                </div>
+
+                {/* Amounts Breakdown */}
+                {activeTab === 'active' && (
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-emerald-50 dark:bg-emerald-950/30 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block">Received</span>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                        {formatPKR(bill.receivedAmount)}
+                      </span>
+                    </div>
+                    <div className="bg-rose-50 dark:bg-rose-950/30 p-1.5 rounded-lg border border-rose-100 dark:border-rose-900/30 text-right">
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 block">Remaining</span>
+                      <span className="font-bold text-rose-700 dark:text-rose-300">
+                        {formatPKR(bill.remainingAmount)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons Toolbar on Mobile */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                  {bill.proofUrl && (
+                    <button
+                      onClick={() => setProofModal({ isOpen: true, url: bill.proofUrl, docNo: bill.billNumber })}
+                      className="text-[11px] text-purple-600 dark:text-purple-400 flex items-center gap-1 font-semibold"
+                    >
+                      <ImageIcon className="w-3 h-3" />
+                      Proof
+                    </button>
+                  )}
+                  <div className="flex items-center gap-1 ml-auto">
+                    {activeTab === 'active' ? (
+                      <>
+                        <button
+                          onClick={() => setSelectedBillForDetails(bill)}
+                          className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700 dark:text-slate-300"
+                          title="View Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => openEditModal(bill)}
+                          className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+                          title="Edit Sales Bill"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPDF(bill)}
+                          className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
+                          title="Download PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenWhatsApp(bill)}
+                          className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
+                          title="WhatsApp"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleInitiateDelete(bill)}
+                          className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/50"
+                          title="Delete Bill"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleInitiateRestore(bill)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 font-semibold flex items-center gap-1 text-xs"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Restore Bill
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-8 text-center text-xs text-slate-400">
+              {activeTab === 'active' 
+                ? 'No active sales bills match the specified filter criteria.' 
+                : 'No recently deleted sales bills.'}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop View: Full Data Table (>= sm) */}
+        <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
               <tr>

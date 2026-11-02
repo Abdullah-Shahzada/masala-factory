@@ -204,10 +204,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {!collapsed && (
           <div className="p-3 border-t border-slate-800/80 bg-slate-950/30">
             <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50 text-xs">
-              <span className="text-slate-400 block font-medium">Demo Network Status</span>
+              <span className="text-slate-400 block font-medium">Enterprise Database</span>
               <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                3 Factory Branches Active
+                TiDB Cloud Active
               </span>
             </div>
           </div>

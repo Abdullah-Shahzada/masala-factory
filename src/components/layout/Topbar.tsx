@@ -58,14 +58,19 @@ export const Topbar: React.FC<TopbarProps> = ({
   return (
     <header className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 px-4 lg:px-6 flex items-center justify-between gap-4">
       
-      {/* Left side: Collapse toggle + Mobile Menu */}
-      <div className="flex items-center gap-3">
+      {/* Left side: Collapse toggle + Mobile Menu & Brand */}
+      <div className="flex items-center gap-2 sm:gap-3">
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden"
         >
           <Menu className="w-5 h-5" />
         </button>
+
+        <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white lg:hidden flex items-center gap-1.5 truncate max-w-[150px]">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+          {businessName || 'Masala Factory'}
+        </span>
 
         <button
           onClick={() => setCollapsed(!collapsed)}
