@@ -218,7 +218,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="text-slate-400 block font-medium">Enterprise Database</span>
               <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                TiDB Cloud Active
+                Enterprise Cloud Active
               </span>
             </div>
           </div>

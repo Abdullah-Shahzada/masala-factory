@@ -88,7 +88,7 @@ export const Login: React.FC = () => {
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">
               <Database className="w-3.5 h-3.5" />
-              TiDB Cloud MySQL
+              Cloud Synchronized
             </span>
           </div>
         </div>
@@ -181,7 +181,7 @@ export const Login: React.FC = () => {
           <div className="mt-5 text-center">
             <span className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Enterprise Encrypted Portal • TiDB Cloud MySQL
+              Enterprise Encrypted Portal • Secure Session
             </span>
           </div>
         </div>

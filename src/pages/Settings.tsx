@@ -451,7 +451,7 @@ export const Settings: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value="Production Active (TiDB Cloud MySQL)"
+                  value="Production Enterprise System"
                   disabled
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-500"
                 />
@@ -600,7 +600,7 @@ export const Settings: React.FC = () => {
             <div className="flex justify-between items-center">
               <span className="text-slate-500">Auth System:</span>
               <span className="px-2 py-0.5 rounded-full font-semibold text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                TiDB Cloud Database Session
+                Enterprise Cloud Session
               </span>
             </div>
           </div>
@@ -712,7 +712,7 @@ export const Settings: React.FC = () => {
             <div>
               <span className="font-bold block">Cross-Device Session Revocation</span>
               <span className="text-[11px] opacity-90">
-                Updating your password immediately updates TiDB Cloud database and forces an automatic logout on all other mobile phones and open browser tabs.
+                Updating your password immediately updates the central database and forces an automatic logout on all other mobile phones and open browser tabs.
               </span>
             </div>
           </div>
