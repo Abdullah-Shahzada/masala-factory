@@ -24,7 +24,9 @@ import {
   EyeOff,
   AlertCircle,
   CheckCircle2,
-  Shield
+  Shield,
+  Smartphone,
+  Download
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -125,18 +127,18 @@ export const Settings: React.FC = () => {
             ctx.drawImage(img, 0, 0);
             const pngDataUrl = canvas.toDataURL('image/png');
             setProfileData(prev => ({ ...prev, logoUrl: pngDataUrl }));
-            updateCompanyProfile({ logoUrl: pngDataUrl });
+            updateCompanyProfile({ ...profileData, logoUrl: pngDataUrl });
             return;
           }
         } catch {
           // fallback to rawDataUrl
         }
         setProfileData(prev => ({ ...prev, logoUrl: rawDataUrl }));
-        updateCompanyProfile({ logoUrl: rawDataUrl });
+        updateCompanyProfile({ ...profileData, logoUrl: rawDataUrl });
       };
       img.onerror = () => {
         setProfileData(prev => ({ ...prev, logoUrl: rawDataUrl }));
-        updateCompanyProfile({ logoUrl: rawDataUrl });
+        updateCompanyProfile({ ...profileData, logoUrl: rawDataUrl });
       };
       img.src = rawDataUrl;
     };
@@ -312,7 +314,7 @@ export const Settings: React.FC = () => {
                       type="button"
                       onClick={() => {
                         setProfileData(prev => ({ ...prev, logoUrl: '' }));
-                        updateCompanyProfile({ logoUrl: '' });
+                        updateCompanyProfile({ ...profileData, logoUrl: '' });
                       }}
                       className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Remove Logo"
@@ -703,6 +705,44 @@ export const Settings: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* Cross-Device Security Note */}
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Cross-Device Session Revocation</span>
+              <span className="text-[11px] opacity-90">
+                Updating your password immediately updates TiDB Cloud database and forces an automatic logout on all other mobile phones and open browser tabs.
+              </span>
+            </div>
+          </div>
+
+          {/* Mobile App PWA Installation Guide */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-3">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h4 className="font-bold text-slate-900 dark:text-white text-xs">
+                Install as Mobile App (PWA)
+              </h4>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              You can install Masala Factory on Android or iPhone to use it with full-screen native app performance without browser search bars.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+              <div className="p-3 rounded-lg bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-1">
+                <span className="font-bold text-slate-800 dark:text-slate-200 block">Android (Chrome / Edge)</span>
+                <span className="text-slate-500 dark:text-slate-400 block">
+                  Tap the three dots (⋮) in the top-right corner and select <strong className="text-emerald-600 dark:text-emerald-400">"Install app"</strong> or <strong className="text-emerald-600 dark:text-emerald-400">"Add to Home screen"</strong>.
+                </span>
+              </div>
+              <div className="p-3 rounded-lg bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 space-y-1">
+                <span className="font-bold text-slate-800 dark:text-slate-200 block">iPhone / iPad (Safari)</span>
+                <span className="text-slate-500 dark:text-slate-400 block">
+                  Tap the Share button (⬆) at the bottom and select <strong className="text-emerald-600 dark:text-emerald-400">"Add to Home Screen"</strong>.
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

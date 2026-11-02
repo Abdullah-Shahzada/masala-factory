@@ -52,6 +52,31 @@ const request = async <T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 };
 
+// 0. AUTHENTICATION & GLOBAL SESSION REVOCATION
+export const loginMySQL = async (identifier: string, password: string): Promise<{ success: boolean; message: string; user?: any; tokenVersion?: number }> => {
+  const res = await request<{ success: boolean; message: string; user?: any; tokenVersion?: number }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ identifier, password })
+  });
+  if (res && res.success) return res;
+  return { success: false, message: res?.message || 'Invalid Username or Password.' };
+};
+
+export const changePasswordMySQL = async (currentPassword: string, newPassword: string, username = 'admin'): Promise<{ success: boolean; message: string; tokenVersion?: number }> => {
+  const res = await request<{ success: boolean; message: string; tokenVersion?: number }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword, username })
+  });
+  if (res && res.success) return res;
+  return { success: false, message: res?.message || 'Failed to update password.' };
+};
+
+export const verifySessionMySQL = async (username: string, tokenVersion: number): Promise<{ valid: boolean; message?: string }> => {
+  const res = await request<{ valid: boolean; message?: string }>(`/auth/verify-session?username=${encodeURIComponent(username)}&tokenVersion=${tokenVersion}`);
+  if (res && res.valid === false) return res;
+  return { valid: true };
+};
+
 // 1. FACTORIES
 export const fetchFactoriesFromMySQL = async (): Promise<Factory[] | null> => {
   return request<Factory[]>('/factories');

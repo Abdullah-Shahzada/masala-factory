@@ -568,7 +568,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbPayments !== null) setPaymentsReceived(dbPayments);
         if (dbPurchases !== null) setPurchases(dbPurchases);
         if (dbExpenses !== null) setExpenses(dbExpenses);
-        if (dbProfile) setCompanyProfile(dbProfile);
+        if (dbProfile) {
+          setCompanyProfile(prev => ({
+            ...prev,
+            ...dbProfile,
+            logoUrl: dbProfile.logoUrl || prev.logoUrl
+          }));
+        }
         if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
         if (dbSchedules !== null) setScheduleItems(dbSchedules);
       } catch (err) {

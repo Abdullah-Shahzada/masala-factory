@@ -17,7 +17,8 @@ import {
   Menu,
   X,
   Trash2,
-  Building2
+  Building2,
+  Smartphone
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -200,12 +201,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Footer Branch Badge */}
+        {/* Footer Branch Badge & Install Button */}
         {!collapsed && (
-          <div className="p-3 border-t border-slate-800/80 bg-slate-950/30">
-            <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50 text-xs">
+          <div className="p-3 border-t border-slate-800/80 bg-slate-950/30 space-y-2">
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                window.dispatchEvent(new CustomEvent('open-pwa-install'));
+              }}
+              className="w-full p-2.5 rounded-xl bg-gradient-to-r from-emerald-600/20 to-teal-600/20 hover:from-emerald-600/30 hover:to-teal-600/30 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-95"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>Install Mobile App</span>
+            </button>
+            <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50 text-[11px]">
               <span className="text-slate-400 block font-medium">Enterprise Database</span>
-              <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-1">
+              <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 TiDB Cloud Active
               </span>

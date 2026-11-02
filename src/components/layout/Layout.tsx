@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { MobileBottomNav } from './MobileBottomNav';
+import { PWAInstallPrompt } from '../common/PWAInstallPrompt';
 
 export const Layout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -38,6 +39,9 @@ export const Layout: React.FC = () => {
 
         {/* Mobile Bottom Navigation Bar */}
         <MobileBottomNav onOpenMenu={() => setMobileOpen(true)} />
+
+        {/* PWA App Install Prompt */}
+        <PWAInstallPrompt />
       </div>
     </div>
   );

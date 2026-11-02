@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
+import { loginMySQL, changePasswordMySQL, verifySessionMySQL } from '../services/mysqlService';
 
 export interface AuthUser {
   id: string;
@@ -8,6 +9,7 @@ export interface AuthUser {
   username: string;
   fullName: string;
   role: string;
+  tokenVersion?: number;
 }
 
 interface AuthContextType {
@@ -57,12 +59,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email,
               username,
               fullName,
-              role: 'Factory Admin'
+              role: 'Factory Admin',
+              tokenVersion: 1
             });
           }
 
           // Listen for auth changes
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
             if (!isMounted) return;
             setSession(newSession);
             setSupabaseUser(newSession?.user || null);
@@ -76,7 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 email,
                 username,
                 fullName,
-                role: 'Factory Admin'
+                role: 'Factory Admin',
+                tokenVersion: 1
               });
             } else {
               setUser(null);
@@ -87,12 +91,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             subscription.unsubscribe();
           };
         } else {
-          // Offline / Demo session check
+          // MySQL Database session check
           const stored = localStorage.getItem(DEMO_AUTH_KEY);
           if (stored && isMounted) {
             try {
-              const parsed = JSON.parse(stored);
+              const parsed: AuthUser = JSON.parse(stored);
               setUser(parsed);
+
+              // Verify if session tokenVersion is still valid in TiDB MySQL
+              if (parsed.username && parsed.tokenVersion !== undefined) {
+                verifySessionMySQL(parsed.username, parsed.tokenVersion).then(res => {
+                  if (res && res.valid === false && isMounted) {
+                    console.warn('[Auth] Session invalidated: password was changed elsewhere.');
+                    localStorage.removeItem(DEMO_AUTH_KEY);
+                    setUser(null);
+                  }
+                }).catch(() => {});
+              }
             } catch {
               localStorage.removeItem(DEMO_AUTH_KEY);
             }
@@ -112,6 +127,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isSupabase]);
 
+  // Cross-device session check: if password changes on any mobile/desktop, auto-logout
+  useEffect(() => {
+    if (isSupabase || !user || !user.username || user.tokenVersion === undefined) return;
+
+    const checkSession = async () => {
+      try {
+        const res = await verifySessionMySQL(user.username, user.tokenVersion || 1);
+        if (res && res.valid === false) {
+          console.warn('[Auth] Auto-logout: Password changed on another device.');
+          await logout();
+          alert('Security Alert: Your session has expired because the password was changed on another device. Please log in with the new password.');
+        }
+      } catch (err) {
+        // Silently skip if network momentarily offline
+      }
+    };
+
+    window.addEventListener('focus', checkSession);
+    const interval = setInterval(checkSession, 25000);
+
+    return () => {
+      window.removeEventListener('focus', checkSession);
+      clearInterval(interval);
+    };
+  }, [user, isSupabase]);
+
   /**
    * Log In with Username or Email and Password
    */
@@ -128,10 +169,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         let emailToAuth = cleanId;
 
-        // If not an email, lookup email by username in profiles table
         if (!cleanId.includes('@')) {
           try {
-            const { data: profile, error: profError } = await supabase
+            const { data: profile } = await supabase
               .from('profiles')
               .select('email')
               .eq('username', cleanId.toLowerCase())
@@ -140,7 +180,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (profile && profile.email) {
               emailToAuth = profile.email;
             } else {
-              // Try direct email fallback pattern or report error
               emailToAuth = `${cleanId.toLowerCase()}@masalafactory.pk`;
             }
           } catch {
@@ -160,8 +199,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.session && data.user) {
           setSession(data.session);
           setSupabaseUser(data.user);
+
           const email = data.user.email || emailToAuth;
-          const username = data.user.user_metadata?.username || cleanId;
+          const username = data.user.user_metadata?.username || email.split('@')[0];
           const fullName = data.user.user_metadata?.full_name || 'Factory Administrator';
 
           setUser({
@@ -169,19 +209,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email,
             username,
             fullName,
-            role: 'Factory Admin'
+            role: 'Factory Admin',
+            tokenVersion: 1
           });
+
           return { success: true, message: 'Login successful.' };
         }
 
         return { success: false, message: 'Authentication failed. Please verify credentials.' };
       } catch (err: any) {
-        return { success: false, message: err?.message || 'Connection error to Supabase. Check internet connection.' };
+        return { success: false, message: err?.message || 'Connection error to Supabase.' };
       }
     } else {
-      // Demo authentication mode (while Supabase credentials are not configured in .env)
+      // TiDB Cloud MySQL Authentication
+      try {
+        const mysqlRes = await loginMySQL(cleanId, password);
+        if (mysqlRes && mysqlRes.success && mysqlRes.user) {
+          const authUser: AuthUser = {
+            id: mysqlRes.user.id || 'usr-admin-01',
+            email: mysqlRes.user.email || `${cleanId}@masalafactory.pk`,
+            username: mysqlRes.user.username || cleanId,
+            fullName: 'Factory Administrator',
+            role: mysqlRes.user.role || 'Factory Admin',
+            tokenVersion: mysqlRes.tokenVersion || 1
+          };
+
+          setUser(authUser);
+          localStorage.setItem(DEMO_AUTH_KEY, JSON.stringify(authUser));
+          localStorage.setItem(DEMO_PWD_KEY, password);
+          return { success: true, message: 'Login successful.' };
+        } else if (mysqlRes && !mysqlRes.success) {
+          return { success: false, message: mysqlRes.message || 'Invalid Username or Password.' };
+        }
+      } catch (err: any) {
+        console.warn('MySQL login network error, falling back to local verification:', err);
+      }
+
+      // Offline / network fallback verification
       const currentStoredPwd = localStorage.getItem(DEMO_PWD_KEY) || 'admin123';
-      const validUsers = ['admin', 'manager', 'admin@masalafactory.pk', 'demo@masalafactory.pk'];
+      const validUsers = ['admin', 'manager', 'admin@masalafactory.pk'];
 
       const isUserMatch = validUsers.includes(cleanId.toLowerCase());
       const isPwdMatch = password === currentStoredPwd || password === 'admin' || password === '1234';
@@ -198,7 +264,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: cleanId.includes('@') ? cleanId : `${cleanId}@masalafactory.pk`,
         username: cleanId.includes('@') ? cleanId.split('@')[0] : cleanId,
         fullName: 'Factory Administrator',
-        role: 'Factory Admin'
+        role: 'Factory Admin',
+        tokenVersion: 1
       };
 
       setUser(adminUser);
@@ -226,7 +293,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Change Password securely
+   * Change Password securely & Invalidate other devices
    */
   const changePassword = async (
     currentPassword: string, 
@@ -248,7 +315,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
-        // 1. Verify current password by attempting re-authentication
         const { error: verifyError } = await supabase.auth.signInWithPassword({
           email: user.email,
           password: currentPassword
@@ -261,7 +327,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }
 
-        // 2. Securely update password using Supabase Auth
         const { error: updateError } = await supabase.auth.updateUser({
           password: newPassword
         });
@@ -275,7 +340,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, message: err?.message || 'Error communicating with Supabase.' };
       }
     } else {
-      // Demo session password change
+      // TiDB Cloud MySQL password change with global cross-device session revocation
+      try {
+        const mysqlRes = await changePasswordMySQL(currentPassword, newPassword, user?.username || 'admin');
+        if (mysqlRes && mysqlRes.success) {
+          const newTokenVersion = mysqlRes.tokenVersion || ((user?.tokenVersion || 1) + 1);
+          if (user) {
+            const updatedUser = { ...user, tokenVersion: newTokenVersion };
+            setUser(updatedUser);
+            localStorage.setItem(DEMO_AUTH_KEY, JSON.stringify(updatedUser));
+          }
+          localStorage.setItem(DEMO_PWD_KEY, newPassword);
+          return {
+            success: true,
+            message: 'Password updated successfully! All other devices have been automatically logged out.'
+          };
+        } else if (mysqlRes && !mysqlRes.success) {
+          return { success: false, message: mysqlRes.message || 'Current password verification failed.' };
+        }
+      } catch (err: any) {
+        console.warn('MySQL changePassword network error:', err);
+      }
+
+      // Local fallback
       const currentStoredPwd = localStorage.getItem(DEMO_PWD_KEY) || 'admin123';
       const validCurrent = currentPassword === currentStoredPwd || currentPassword === 'admin' || currentPassword === '1234';
 
