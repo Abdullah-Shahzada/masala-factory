@@ -1320,3 +1320,47 @@ export const restoreRecordInSupabase = async (
     return false;
   }
 };
+
+/* =========================================================================
+   12. PERMANENT DELETE RECORD FROM DATABASE
+   ========================================================================= */
+
+export const permanentDeleteRecordFromDatabase = async (
+  tableName: 'parties' | 'products' | 'sales_bills' | 'payments_received' | 'purchases' | 'supplier_payments' | 'expenses' | 'payment_schedules',
+  id: string
+): Promise<boolean> => {
+  if (!id) return false;
+  if (isUsingMySQL()) {
+    switch (tableName) {
+      case 'sales_bills':
+        return mysqlService.permanentDeleteSalesBillFromMySQL(id);
+      case 'payments_received':
+        return mysqlService.permanentDeletePaymentReceivedFromMySQL(id);
+      case 'purchases':
+        return mysqlService.permanentDeletePurchaseFromMySQL(id);
+      case 'supplier_payments':
+        return mysqlService.permanentDeleteSupplierPaymentFromMySQL(id);
+      case 'expenses':
+        return mysqlService.permanentDeleteExpenseFromMySQL(id);
+      case 'payment_schedules':
+        return mysqlService.permanentDeletePaymentScheduleFromMySQL(id);
+      case 'parties':
+        return mysqlService.permanentDeletePartyFromMySQL(id);
+      case 'products':
+        return mysqlService.permanentDeleteProductFromMySQL(id);
+    }
+  }
+
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { error } = await supabase.from(tableName).delete().eq('id', id);
+    if (error) {
+      console.warn(`Supabase permanent delete error in ${tableName}:`, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Supabase permanent delete exception in ${tableName}:`, err);
+    return false;
+  }
+};

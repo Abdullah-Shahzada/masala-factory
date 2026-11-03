@@ -56,8 +56,10 @@ import {
   savePaymentScheduleToSupabase,
   insertPaymentScheduleToSupabase,
   softDeleteRecordInSupabase,
-  restoreRecordInSupabase
+  restoreRecordInSupabase,
+  permanentDeleteRecordFromDatabase
 } from '../services/supabaseService';
+import { generateUUID } from '../utils/uuid';
 
 interface AppContextType {
   // Factory & Branch State
@@ -280,7 +282,18 @@ const loadLocalStorage = <T,>(key: string, fallback: T): T => {
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) ? parsed.length > 0 : parsed) {
+      if (Array.isArray(parsed)) {
+        const sanitized = parsed.filter(item => {
+          if (!item || typeof item !== 'object') return false;
+          const id = (item as any).id;
+          if (typeof id === 'string' && (id.startsWith('pr-50') || id.startsWith('sb-100') || id.startsWith('pur-20') || id.startsWith('exp-40'))) {
+            return false;
+          }
+          return true;
+        });
+        return sanitized as unknown as T;
+      }
+      if (parsed !== null && parsed !== undefined) {
         return parsed;
       }
     }
@@ -475,22 +488,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadLocalStorage('MF_PRODUCTS', INITIAL_PRODUCTS)
   );
   const [salesBills, setSalesBills] = useState<SalesBill[]>(() =>
-    loadLocalStorage('MF_SALES_BILLS', INITIAL_SALES_BILLS)
+    loadLocalStorage('MF_SALES_BILLS', [])
   );
   const [paymentsReceived, setPaymentsReceived] = useState<PaymentReceived[]>(() =>
-    loadLocalStorage('MF_PAYMENTS', INITIAL_PAYMENTS_RECEIVED)
+    loadLocalStorage('MF_PAYMENTS', [])
   );
   const [purchases, setPurchases] = useState<PurchaseBill[]>(() =>
-    loadLocalStorage('MF_PURCHASES', INITIAL_PURCHASES)
+    loadLocalStorage('MF_PURCHASES', [])
   );
   const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>(() =>
-    loadLocalStorage('MF_SUPPLIER_PAYMENTS', INITIAL_SUPPLIER_PAYMENTS)
+    loadLocalStorage('MF_SUPPLIER_PAYMENTS', [])
   );
   const [expenses, setExpenses] = useState<Expense[]>(() =>
-    loadLocalStorage('MF_EXPENSES', INITIAL_EXPENSES)
+    loadLocalStorage('MF_EXPENSES', [])
   );
   const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(() =>
-    loadLocalStorage('MF_SCHEDULES', INITIAL_SCHEDULE)
+    loadLocalStorage('MF_SCHEDULES', [])
   );
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
 
@@ -612,7 +625,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Parties - returns newly created party
   // Uses insertPartyToSupabase to get the real UUID from DB and syncs local state immediately
   const addParty = (partyData: Omit<Party, 'id' | 'createdAt'>): Party => {
-    const tempId = `p-${Date.now().toString().slice(-6)}`;
+    const tempId = generateUUID();
     const newParty: Party = {
       ...partyData,
       id: tempId,
@@ -622,17 +635,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // If Supabase is connected, insert and get real UUID, then update local state
     if (isDatabaseConnected()) {
-      insertPartyToSupabase(newParty).then(uuid => {
-        if (uuid) {
-          // Replace tempId with real Supabase UUID in all state arrays
-          setParties(prev => prev.map(p => p.id === tempId ? { ...p, id: uuid } : p));
-          setSalesBills(prev => prev.map(b => b.partyId === tempId ? { ...b, partyId: uuid } : b));
-          setPaymentsReceived(prev => prev.map(pr => pr.partyId === tempId ? { ...pr, partyId: uuid } : pr));
-          setScheduleItems(prev => prev.map(s => s.partyId === tempId ? { ...s, partyId: uuid } : s));
-        } else {
-          console.error('addParty: insertPartyToSupabase returned null — party not saved to Supabase');
-        }
-      });
+      insertPartyToSupabase(newParty).catch(err => console.error(err));
     }
     return newParty;
   };
@@ -709,6 +712,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!party) return { success: false, message: 'Party record not found.' };
 
     setParties(prev => prev.filter(p => p.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('parties', id);
+    }
     return {
       success: true,
       message: `Contact "${party.name}" has been permanently deleted.`
@@ -717,18 +723,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Products - returns newly created product
   const addProduct = (productData: Omit<Product, 'id'>): Product => {
-    const tempId = `prod-${Date.now().toString().slice(-6)}`;
+    const newId = generateUUID();
     const newProduct: Product = {
       ...productData,
-      id: tempId
+      id: newId
     };
     setProducts(prev => [...prev, newProduct]);
     if (isDatabaseConnected()) {
-      insertProductToSupabase(newProduct).then(uuid => {
-        if (uuid) {
-          setProducts(prev => prev.map(p => p.id === tempId ? { ...p, id: uuid } : p));
-        }
-      });
+      insertProductToSupabase(newProduct).catch(err => console.error(err));
     }
     return newProduct;
   };
@@ -906,6 +908,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setSalesBills(prev => prev.filter(b => b.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('sales_bills', id);
+    }
     return {
       success: true,
       message: `Sales Bill ${bill.billNumber} permanently deleted.`
@@ -1191,6 +1196,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!payment) return { success: false, message: 'Payment record not found.' };
 
     setPaymentsReceived(prev => prev.filter(p => p.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('payments_received', id);
+    }
     return {
       success: true,
       message: `Payment Receipt ${payment.receiptNumber} permanently deleted.`
@@ -1327,6 +1335,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!item) return { success: false, message: 'Schedule item not found.' };
 
     setScheduleItems(prev => prev.filter(s => s.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('payment_schedules', id);
+    }
     return { success: true, message: 'Schedule reminder permanently deleted.' };
   };
 
@@ -1551,6 +1562,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setPurchases(prev => prev.filter(pb => pb.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('purchases', id);
+    }
     return {
       success: true,
       message: `Supplier Purchase ${purchase.billNumber} has been permanently deleted.`
@@ -1616,6 +1630,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!sp) return { success: false, message: 'Supplier payment not found.' };
 
     setSupplierPayments(prev => prev.filter(p => p.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('supplier_payments', id);
+    }
     return { success: true, message: `Supplier Payment ${sp.receiptNumber} permanently deleted.` };
   };
 
@@ -1695,6 +1712,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!expense) return { success: false, message: 'Expense record not found.' };
 
     setExpenses(prev => prev.filter(e => e.id !== id));
+    if (isDatabaseConnected()) {
+      permanentDeleteRecordFromDatabase('expenses', id);
+    }
     return { success: true, message: `Expense Voucher ${expense.expenseNumber} permanently deleted.` };
   };
 

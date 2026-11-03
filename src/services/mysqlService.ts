@@ -230,3 +230,44 @@ export const insertPaymentScheduleToMySQL = async (item: PaymentScheduleItem): P
   });
   return res?.id || null;
 };
+
+// 11. PERMANENT DELETE OPERATIONS
+export const permanentDeleteSalesBillFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/sales-bills/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeletePaymentReceivedFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/payments-received/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeletePurchaseFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/purchases/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeleteSupplierPaymentFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/supplier-payments/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeleteExpenseFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/expenses/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeletePaymentScheduleFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/payment-schedules/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeletePartyFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/parties/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const permanentDeleteProductFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/products/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};

@@ -326,6 +326,16 @@ app.post('/api/parties', async (req, res) => {
   }
 });
 
+app.delete('/api/parties/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM parties WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 4. PRODUCTS
 // -------------------------------------------------------------
@@ -360,6 +370,16 @@ app.post('/api/products', async (req, res) => {
       [id, pr.name, pr.category, pr.unit || 'KG', pr.defaultRate || 0, pr.stockQty || 0, pr.description || null]
     );
     res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM products WHERE id = ?', [id]);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -452,6 +472,24 @@ app.post('/api/sales-bills', async (req, res) => {
 
     await conn.commit();
     res.json({ success: true, id });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete('/api/sales-bills/:id', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    await conn.query('DELETE FROM payment_allocations WHERE bill_id = ?', [id]);
+    await conn.query('DELETE FROM sales_bill_items WHERE bill_id = ?', [id]);
+    await conn.query('DELETE FROM sales_bills WHERE id = ?', [id]);
+    await conn.commit();
+    res.json({ success: true });
   } catch (err: any) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
@@ -555,6 +593,23 @@ app.post('/api/payments-received', async (req, res) => {
   }
 });
 
+app.delete('/api/payments-received/:id', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    await conn.query('DELETE FROM payment_allocations WHERE payment_id = ?', [id]);
+    await conn.query('DELETE FROM payments_received WHERE id = ?', [id]);
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 // -------------------------------------------------------------
 // 7. PURCHASES
 // -------------------------------------------------------------
@@ -644,6 +699,24 @@ app.post('/api/purchases', async (req, res) => {
   }
 });
 
+app.delete('/api/purchases/:id', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    await conn.query('DELETE FROM purchase_items WHERE purchase_id = ?', [id]);
+    await conn.query('DELETE FROM supplier_payments WHERE purchase_id = ?', [id]);
+    await conn.query('DELETE FROM purchases WHERE id = ?', [id]);
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 // -------------------------------------------------------------
 // 8. SUPPLIER PAYMENTS
 // -------------------------------------------------------------
@@ -702,6 +775,16 @@ app.post('/api/supplier-payments', async (req, res) => {
   }
 });
 
+app.delete('/api/supplier-payments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM supplier_payments WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 9. EXPENSES
 // -------------------------------------------------------------
@@ -755,6 +838,16 @@ app.post('/api/expenses', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     conn.release();
+  }
+});
+
+app.delete('/api/expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM expenses WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -842,6 +935,23 @@ app.post('/api/payment-schedules', async (req, res) => {
 
     await conn.commit();
     res.json({ success: true, id });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete('/api/payment-schedules/:id', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    await conn.query('DELETE FROM schedule_installments WHERE schedule_id = ?', [id]);
+    await conn.query('DELETE FROM payment_schedules WHERE id = ?', [id]);
+    await conn.commit();
+    res.json({ success: true });
   } catch (err: any) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
