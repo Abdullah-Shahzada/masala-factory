@@ -173,7 +173,6 @@ export const PartyCombobox: React.FC<PartyComboboxProps> = ({
             <input
               ref={inputRef}
               type="text"
-              required={required && !selectedPartyId}
               placeholder={placeholder}
               value={search}
               onFocus={() => setIsOpen(true)}

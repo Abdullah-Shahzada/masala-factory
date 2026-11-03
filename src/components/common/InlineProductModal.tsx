@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { Product } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { CurrencyInput } from './CurrencyInput';
+import { Plus, Package } from 'lucide-react';
 
 interface InlineProductModalProps {
   isOpen: boolean;
@@ -24,8 +25,11 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
   const [description, setDescription] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setErrorMsg('');
     if (!name.trim()) {
       setErrorMsg('Product name is required.');
@@ -65,6 +69,14 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
     setErrorMsg('');
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSubmit();
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -73,7 +85,7 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
       subtitle="Adds to product catalog & selects in current line item"
       maxWidth="md"
     >
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+      <div className="space-y-4 text-xs">
         {errorMsg && (
           <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
             <span className="font-bold">Error:</span> {errorMsg}
@@ -88,8 +100,8 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
             placeholder="e.g. Karahi Masala Special"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={handleKeyDown}
             className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold"
-            required
             autoFocus
           />
         </div>
@@ -120,8 +132,8 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
               placeholder="e.g. 1kg Pack / 25kg Bag"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              required
             />
           </div>
         </div>
@@ -135,7 +147,6 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
             onChange={setDefaultRate}
             placeholder="Rate (PKR)"
             prefix="Rs."
-            required
           />
         </div>
 
@@ -148,6 +159,7 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
             placeholder="e.g. Rich traditional karahi spice blend"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            onKeyDown={handleKeyDown}
             className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
           />
         </div>
@@ -156,18 +168,20 @@ export const InlineProductModal: React.FC<InlineProductModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-xl"
+            className="px-4 py-2 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-colors"
           >
             Cancel
           </button>
           <button
-            type="submit"
-            className="px-5 py-2 font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md"
+            type="button"
+            onClick={handleSubmit}
+            className="px-5 py-2 font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
           >
-            Save & Select Product
+            <Package className="w-4 h-4" />
+            <span>Save & Select Product</span>
           </button>
         </div>
-      </form>
+      </div>
     </Modal>
   );
 };

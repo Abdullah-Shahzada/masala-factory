@@ -29,8 +29,11 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setErrorMsg('');
     if (!name.trim()) {
       setErrorMsg('Party / Business name is required.');
@@ -41,12 +44,16 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
       return;
     }
 
-    // Check for duplicate party by name or normalized phone
+    // Check for duplicate party among active directory contacts
     const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
-    const duplicate = parties.find(p => 
-      p.name.trim().toLowerCase() === name.trim().toLowerCase() ||
-      (cleanPhone.length >= 7 && p.phone.replace(/[^0-9]/g, '').endsWith(cleanPhone.slice(-7)))
-    );
+    const duplicate = parties.find(p => {
+      if (p.isDeleted) return false;
+      const pName = (p.name || '').trim().toLowerCase();
+      const pPhone = (p.phone || '').replace(/[^0-9]/g, '');
+      const nameMatch = pName === name.trim().toLowerCase();
+      const phoneMatch = cleanPhone.length >= 7 && pPhone.length >= 7 && pPhone.endsWith(cleanPhone.slice(-7));
+      return nameMatch || phoneMatch;
+    });
 
     if (duplicate) {
       setErrorMsg(`Party "${duplicate.name}" already exists in directory with matching details. Please select the existing contact or enter unique details.`);
@@ -81,6 +88,14 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
     setErrorMsg('');
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSubmit();
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -89,7 +104,7 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
       subtitle="Adds to master directory & selects in current bill"
       maxWidth="lg"
     >
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+      <div className="space-y-4 text-xs">
         {errorMsg && (
           <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
             <span className="font-bold">Error:</span> {errorMsg}
@@ -104,8 +119,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
             placeholder="e.g. Subhan Spice Mart"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
-            required
+            onKeyDown={handleKeyDown}
+            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             autoFocus
           />
         </div>
@@ -120,7 +135,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
               placeholder="e.g. Subhan Group"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
 
@@ -131,7 +147,7 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
             <select
               value={type}
               onChange={(e) => setType(e.target.value as PartyType)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             >
               <option value="Customer">Customer (Buyer)</option>
               <option value="Supplier">Supplier (Vendor)</option>
@@ -150,8 +166,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
               placeholder="+92 300 1234567"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
-              required
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
 
@@ -164,7 +180,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
               placeholder="+92 300 1234567"
               value={whatsapp}
               onChange={(e) => setWhatsapp(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
         </div>
@@ -179,7 +196,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
               placeholder="Main Market / Akbari Mandi"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
 
@@ -192,7 +210,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
               placeholder="Enter city"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
         </div>
@@ -206,7 +225,8 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
             placeholder="e.g. Special credit terms"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+            onKeyDown={handleKeyDown}
+            className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
           />
         </div>
 
@@ -214,18 +234,20 @@ export const InlineContactModal: React.FC<InlineContactModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-xl"
+            className="px-4 py-2 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-colors"
           >
             Cancel
           </button>
           <button
-            type="submit"
-            className="px-5 py-2 font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md"
+            type="button"
+            onClick={handleSubmit}
+            className="px-5 py-2 font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
           >
-            Save & Select Contact
+            <UserPlus className="w-4 h-4" />
+            <span>Save & Select Contact</span>
           </button>
         </div>
-      </form>
+      </div>
     </Modal>
   );
 };

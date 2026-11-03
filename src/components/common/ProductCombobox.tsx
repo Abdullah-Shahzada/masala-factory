@@ -123,7 +123,6 @@ export const ProductCombobox: React.FC<ProductComboboxProps> = ({
           <input
             ref={inputRef}
             type="text"
-            required={required && !selectedProductId}
             placeholder={placeholder}
             value={search}
             onFocus={() => setIsOpen(true)}
