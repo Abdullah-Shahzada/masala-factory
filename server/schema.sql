@@ -305,3 +305,17 @@ CREATE TABLE IF NOT EXISTS schedule_installments (
   INDEX idx_si_schedule (schedule_id),
   FOREIGN KEY (schedule_id) REFERENCES payment_schedules(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id VARCHAR(36) PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  date VARCHAR(50) NOT NULL,
+  type ENUM('alert', 'warning', 'info') NOT NULL DEFAULT 'info',
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  link VARCHAR(255) NULL,
+  is_dismissed TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_notif_dismissed (is_dismissed)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

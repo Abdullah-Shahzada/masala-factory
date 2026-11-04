@@ -59,7 +59,13 @@ import {
   restoreRecordInSupabase,
   permanentDeleteRecordFromDatabase,
   softDeleteSalesBillCascadeToDatabase,
-  restoreSalesBillCascadeToDatabase
+  restoreSalesBillCascadeToDatabase,
+  deleteFactoryFromDatabase,
+  deleteProductFromDatabase,
+  fetchNotificationsFromDatabase,
+  dismissNotificationInDatabase,
+  clearAllNotificationsInDatabase,
+  markNotificationReadInDatabase
 } from '../services/supabaseService';
 import { generateUUID } from '../utils/uuid';
 
@@ -73,6 +79,7 @@ interface AppContextType {
   setSelectedBranchId: (id: string) => void;
   addFactory: (factoryData: Omit<Factory, 'id' | 'createdAt' | 'updatedAt'>) => { success: boolean; message: string; factory?: Factory };
   updateFactory: (id: string, updates: Partial<Factory>) => { success: boolean; message: string };
+  deleteFactory: (id: string) => { success: boolean; message: string };
   toggleFactoryStatus: (id: string) => { success: boolean; message: string };
   getFactoryName: (id?: string) => string;
   addBranch: (branch: { name: string; code: string; city: string; address?: string; phone?: string; email?: string; status?: FactoryStatus; isMain?: boolean }) => void;
@@ -100,6 +107,7 @@ interface AppContextType {
   products: Product[];
   addProduct: (product: Omit<Product, 'id'>) => Product;
   updateProduct: (id: string, product: Partial<Product>) => void;
+  deleteProduct: (id: string) => { success: boolean; message: string };
 
   // Sales Bills
   salesBills: SalesBill[];
@@ -148,6 +156,19 @@ interface AppContextType {
     proofStatus?: import('../types').ProofStatus;
     notes?: string;
   }) => { success: boolean; message: string; receipt?: SupplierPayment };
+  updateSupplierPayment: (
+    id: string,
+    updates: {
+      amountPaid?: number;
+      paymentMethod?: PaymentReceived['paymentMethod'];
+      paymentDate?: string;
+      paymentTime?: string;
+      referenceNo?: string;
+      proofUrl?: string;
+      proofStatus?: import('../types').ProofStatus;
+      notes?: string;
+    }
+  ) => { success: boolean; message: string };
   softDeleteSupplierPayment: (id: string, passwordInput?: string) => { success: boolean; message: string };
   restoreSupplierPayment: (id: string, passwordInput?: string) => { success: boolean; message: string };
   permanentDeleteSupplierPayment: (id: string, passwordInput?: string) => { success: boolean; message: string };
@@ -430,6 +451,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: `Factory "${updates.name || existing.name}" updated successfully.` };
   };
 
+  const deleteFactory = (id: string): { success: boolean; message: string } => {
+    const existing = factories.find(f => f.id === id);
+    if (!existing) return { success: false, message: 'Factory record not found.' };
+    if (existing.isMain) {
+      return { success: false, message: 'Primary / Main Factory cannot be deleted. Designate another factory as main first.' };
+    }
+    if (factories.length <= 1) {
+      return { success: false, message: 'At least one active factory facility must remain configured.' };
+    }
+
+    const updatedList = factories.filter(f => f.id !== id);
+    saveFactories(updatedList);
+    if (isDatabaseConnected()) {
+      deleteFactoryFromDatabase(id).catch(err => console.error(err));
+    }
+    return { success: true, message: `Factory "${existing.name}" deleted successfully.` };
+  };
+
   const toggleFactoryStatus = (id: string): { success: boolean; message: string } => {
     const existing = factories.find(f => f.id === id);
     if (!existing) {
@@ -596,7 +635,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dbExpenses,
         dbProfile,
         dbSupplierPayments,
-        dbSchedules
+        dbSchedules,
+        dbNotifications
       ] = await Promise.all([
         fetchFactoriesFromSupabase(),
         fetchPartiesFromSupabase(),
@@ -607,7 +647,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchExpensesFromSupabase(),
         fetchCompanyProfileFromSupabase(),
         fetchSupplierPaymentsFromSupabase(),
-        fetchPaymentSchedulesFromSupabase()
+        fetchPaymentSchedulesFromSupabase(),
+        fetchNotificationsFromDatabase()
       ]);
 
       if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
@@ -657,6 +698,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
       if (dbSchedules !== null) setScheduleItems(dbSchedules);
+      if (dbNotifications !== null) setNotifications(dbNotifications);
     } catch (err) {
       console.warn('[Sync] Could not load live data from database:', err);
     } finally {
@@ -726,17 +768,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Notifications Management
   const markNotificationRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    if (isDatabaseConnected()) {
+      markNotificationReadInDatabase(id).catch(err => console.error(err));
+    }
   };
 
   const deleteNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
     setDismissedNotifIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+    if (isDatabaseConnected()) {
+      dismissNotificationInDatabase(id).catch(err => console.error(err));
+    }
   };
 
   const clearAllNotifications = () => {
     const allIds = notifications.map(n => n.id);
     setNotifications([]);
     setDismissedNotifIds(prev => [...new Set([...prev, ...allIds])]);
+    if (isDatabaseConnected()) {
+      clearAllNotificationsInDatabase().catch(err => console.error(err));
+    }
   };
 
   // Parties - returns newly created party
@@ -860,6 +911,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       saveProductToSupabase(updated);
     }
+    notifyBroadcastSync();
+  };
+
+  const deleteProduct = (id: string): { success: boolean; message: string } => {
+    const product = products.find(p => p.id === id);
+    if (!product) return { success: false, message: 'Product not found.' };
+    setProducts(prev => prev.filter(p => p.id !== id));
+    if (isDatabaseConnected()) {
+      deleteProductFromDatabase(id).catch(err => console.error(err));
+    }
+    notifyBroadcastSync();
+    return { success: true, message: `Product "${product.name}" deleted successfully.` };
   };
 
   // Sales Bills logic with automatic schedule sync
@@ -1533,6 +1596,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createdAt: new Date().toISOString()
       };
       setSupplierPayments(prev => [initialSupplierPayment, ...prev]);
+      if (isDatabaseConnected()) {
+        saveSupplierPaymentToSupabase(initialSupplierPayment);
+      }
     }
 
     return newPurchase;
@@ -1614,12 +1680,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       saveSupplierPaymentToSupabase(supplierPaymentRecord);
     }
+    notifyBroadcastSync();
 
     return {
       success: true,
       message: `Supplier Payment of Rs.${payment.amount.toLocaleString()} recorded successfully.`,
       receipt: supplierPaymentRecord
     };
+  };
+
+  const updateSupplierPayment = (
+    id: string,
+    updates: Partial<SupplierPayment>
+  ): { success: boolean; message: string } => {
+    const sp = supplierPayments.find(p => p.id === id);
+    if (!sp) return { success: false, message: 'Supplier payment not found.' };
+
+    const purchase = purchases.find(pb => pb.id === sp.purchaseBillId);
+    let newAmountPaid = sp.amountPaid;
+
+    if (updates.amountPaid !== undefined && updates.amountPaid !== sp.amountPaid) {
+      if (updates.amountPaid < 0) {
+        return { success: false, message: 'Payment amount cannot be negative.' };
+      }
+      if (purchase) {
+        const otherPaymentsTotal = Math.max(0, purchase.amountPaid - sp.amountPaid);
+        const maxAllowed = purchase.grandTotal - otherPaymentsTotal;
+        if (updates.amountPaid > maxAllowed) {
+          return {
+            success: false,
+            message: `Overpayment Error: Maximum allowed payment for this bill is Rs.${maxAllowed.toLocaleString('en-PK')}.`
+          };
+        }
+        const updatedBillPaid = otherPaymentsTotal + updates.amountPaid;
+        const updatedBillOutstanding = Math.max(0, purchase.grandTotal - updatedBillPaid);
+        const updatedBillStatus = calculatePaymentStatus(purchase.grandTotal, updatedBillPaid);
+
+        setPurchases(prev => prev.map(pb => {
+          if (pb.id !== purchase.id) return pb;
+          return {
+            ...pb,
+            amountPaid: updatedBillPaid,
+            outstandingAmount: updatedBillOutstanding,
+            status: updatedBillStatus
+          };
+        }));
+
+        if (isDatabaseConnected()) {
+          savePurchaseToSupabase({
+            ...purchase,
+            amountPaid: updatedBillPaid,
+            outstandingAmount: updatedBillOutstanding,
+            status: updatedBillStatus
+          });
+        }
+      }
+      newAmountPaid = updates.amountPaid;
+    }
+
+    const updatedPayment: SupplierPayment = {
+      ...sp,
+      ...updates,
+      amountPaid: newAmountPaid,
+      remainingPayable: purchase ? Math.max(0, purchase.grandTotal - (Math.max(0, purchase.amountPaid - sp.amountPaid) + newAmountPaid)) : sp.remainingPayable
+    };
+
+    setSupplierPayments(prev => prev.map(p => p.id === id ? updatedPayment : p));
+    if (isDatabaseConnected()) {
+      saveSupplierPaymentToSupabase(updatedPayment);
+    }
+    notifyBroadcastSync();
+
+    return { success: true, message: `Supplier Payment ${sp.receiptNumber} updated successfully.` };
   };
 
   const updatePurchase = (id: string, updates: Partial<PurchaseBill>): { success: boolean; message: string } => {
@@ -1963,6 +2095,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSelectedBranchId: setSelectedFactoryId,
       addFactory,
       updateFactory,
+      deleteFactory,
       toggleFactoryStatus,
       getFactoryName,
       addBranch,
@@ -1986,6 +2119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       products,
       addProduct,
       updateProduct,
+      deleteProduct,
 
       salesBills,
       addSalesBill,
@@ -2020,6 +2154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       restorePurchase,
       permanentDeletePurchase,
       recordSupplierPayment,
+      updateSupplierPayment,
       softDeleteSupplierPayment,
       restoreSupplierPayment,
       permanentDeleteSupplierPayment,

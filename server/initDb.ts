@@ -82,6 +82,20 @@ export const initializeDatabase = async () => {
           ('f3e33659-08e6-4694-a99c-17ab03c02cd0', 'Laminated Printed Pouches (1kg)', 'Packaging Material', '1000 Pcs', 8500, 50, 'Food-grade multi-layer foil pouches for packaging')
         `);
       }
+
+      // Check if notifications exist
+      try {
+        const [notifs]: any = await conn.query('SELECT COUNT(*) as count FROM notifications');
+        if (notifs[0].count === 0) {
+          console.log('[MySQL] Seeding initial notifications...');
+          await conn.query(`
+            INSERT INTO notifications (id, title, message, date, type, is_read, link, is_dismissed) VALUES
+            ('notif-1', 'Payment Due Today', 'Al-Madina Cash & Carry balance of Rs.40,000 for Bill B-1547 is due today.', '10 Oct 2026', 'alert', 0, '/schedule', 0),
+            ('notif-2', 'Overdue Receivables', 'Subhan Wholesale Traders Bill B-1549 (Rs.210,000) is past due date.', '09 Oct 2026', 'warning', 0, '/schedule', 0),
+            ('notif-3', 'New Sale Recorded', 'Bill B-1550 recorded for Khyber Hotel Chain (Rs.75,000).', '08 Oct 2026', 'info', 1, '/sales', 0)
+          `);
+        }
+      } catch {}
     } finally {
       conn.release();
     }

@@ -231,6 +231,24 @@ app.post('/api/factories', async (req, res) => {
   }
 });
 
+app.delete('/api/factories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows]: any = await pool.query('SELECT is_main FROM factories WHERE id = ?', [id]);
+    if (rows.length > 0 && rows[0].is_main) {
+      return res.status(400).json({ error: 'Primary/Main Factory cannot be deleted. Designate another factory as main first.' });
+    }
+    try {
+      await pool.query('DELETE FROM factories WHERE id = ?', [id]);
+    } catch {
+      await pool.query('UPDATE factories SET status = "Inactive" WHERE id = ?', [id]);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 2. COMPANY PROFILE
 // -------------------------------------------------------------
@@ -889,6 +907,26 @@ app.delete('/api/supplier-payments/:id', async (req, res) => {
   }
 });
 
+app.post('/api/supplier-payments/:id/soft-delete', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE supplier_payments SET is_deleted = 1, deleted_at = NOW(), deleted_by = "Factory Admin" WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supplier-payments/:id/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE supplier_payments SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 9. EXPENSES
 // -------------------------------------------------------------
@@ -1065,6 +1103,93 @@ app.delete('/api/payment-schedules/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     conn.release();
+  }
+});
+
+app.post('/api/payment-schedules/:id/soft-delete', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE payment_schedules SET is_deleted = 1, deleted_at = NOW(), deleted_by = "Factory Admin" WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/payment-schedules/:id/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE payment_schedules SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 11. NOTIFICATIONS
+// -------------------------------------------------------------
+app.get('/api/notifications', async (_req, res) => {
+  try {
+    const [rows]: any = await pool.query('SELECT * FROM notifications WHERE is_dismissed = 0 ORDER BY created_at DESC');
+    res.json(rows.map((n: any) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      date: n.date,
+      type: n.type,
+      read: Boolean(n.is_read),
+      link: n.link || undefined
+    })));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const n = req.body;
+    const id = n.id || generateId();
+    await pool.query(
+      `INSERT INTO notifications (id, title, message, date, type, is_read, link, is_dismissed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE
+       title = VALUES(title), message = VALUES(message), date = VALUES(date),
+       type = VALUES(type), is_read = VALUES(is_read), link = VALUES(link)`,
+      [id, n.title, n.message, n.date || new Date().toLocaleDateString('en-GB'), n.type || 'info', n.read ? 1 : 0, n.link || null]
+    );
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notifications/:id/dismiss', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE notifications SET is_dismissed = 1 WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notifications/clear-all', async (_req, res) => {
+  try {
+    await pool.query('UPDATE notifications SET is_dismissed = 1');
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE notifications SET is_read = 1 WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

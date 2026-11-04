@@ -14,7 +14,8 @@ import {
   SupplierPayment,
   Expense,
   PaymentScheduleItem,
-  CompanyProfile
+  CompanyProfile,
+  NotificationItem
 } from '../types';
 
 const env = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
@@ -87,6 +88,11 @@ export const saveFactoryToMySQL = async (factory: Factory): Promise<boolean> => 
     method: 'POST',
     body: JSON.stringify(factory)
   });
+  return Boolean(res?.success);
+};
+
+export const deleteFactoryFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/factories/${id}`, { method: 'DELETE' });
   return Boolean(res?.success);
 };
 
@@ -283,5 +289,49 @@ export const permanentDeletePartyFromMySQL = async (id: string): Promise<boolean
 
 export const permanentDeleteProductFromMySQL = async (id: string): Promise<boolean> => {
   const res = await request<{ success: boolean }>(`/products/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+export const deleteProductFromMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/products/${id}`, { method: 'DELETE' });
+  return Boolean(res?.success);
+};
+
+// 11. NOTIFICATIONS
+export const fetchNotificationsFromMySQL = async (): Promise<NotificationItem[] | null> => {
+  return request<NotificationItem[]>('/notifications');
+};
+
+export const dismissNotificationMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/notifications/${id}/dismiss`, { method: 'POST' });
+  return Boolean(res?.success);
+};
+
+export const clearAllNotificationsMySQL = async (): Promise<boolean> => {
+  const res = await request<{ success: boolean }>('/notifications/clear-all', { method: 'POST' });
+  return Boolean(res?.success);
+};
+
+export const markNotificationReadMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/notifications/${id}/read`, { method: 'POST' });
+  return Boolean(res?.success);
+};
+
+// 12. GENERIC SOFT DELETE & RESTORE
+export const softDeleteRecordMySQL = async (
+  tableName: 'parties' | 'products' | 'sales_bills' | 'payments_received' | 'purchases' | 'supplier_payments' | 'expenses' | 'payment_schedules',
+  id: string
+): Promise<boolean> => {
+  const endpoint = `/${tableName.replace(/_/g, '-')}/${id}/soft-delete`;
+  const res = await request<{ success: boolean }>(endpoint, { method: 'POST' });
+  return Boolean(res?.success);
+};
+
+export const restoreRecordMySQL = async (
+  tableName: 'parties' | 'products' | 'sales_bills' | 'payments_received' | 'purchases' | 'supplier_payments' | 'expenses' | 'payment_schedules',
+  id: string
+): Promise<boolean> => {
+  const endpoint = `/${tableName.replace(/_/g, '-')}/${id}/restore`;
+  const res = await request<{ success: boolean }>(endpoint, { method: 'POST' });
   return Boolean(res?.success);
 };

@@ -316,6 +316,7 @@ export const PaymentSchedule: React.FC = () => {
 
   // Filter items
   const filteredSchedule = scheduleItems.filter(item => {
+    if (item.isDeleted) return false;
     if (item.type !== activeTab) return false;
     if (selectedBranchId !== 'all' && item.branchId !== selectedBranchId) return false;
     if (branchFilter !== 'all' && item.branchId !== branchFilter) return false;

@@ -27,7 +27,8 @@ import {
   Expense,
   PaymentScheduleItem,
   ScheduleInstallment,
-  CompanyProfile
+  CompanyProfile,
+  NotificationItem
 } from '../types';
 
 /* =========================================================================
@@ -1272,6 +1273,9 @@ export const softDeleteRecordInSupabase = async (
   deletedReason?: string,
   deletedBy = 'Factory Admin'
 ): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.softDeleteRecordMySQL(tableName, id);
+  }
   if (!isSupabaseConfigured() || !id) return false;
   try {
     const { error } = await supabase
@@ -1299,6 +1303,9 @@ export const restoreRecordInSupabase = async (
   tableName: 'parties' | 'products' | 'sales_bills' | 'payments_received' | 'purchases' | 'supplier_payments' | 'expenses' | 'payment_schedules',
   id: string
 ): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.restoreRecordMySQL(tableName, id);
+  }
   if (!isSupabaseConfigured() || !id) return false;
   try {
     const { error } = await supabase
@@ -1377,4 +1384,46 @@ export const permanentDeleteRecordFromDatabase = async (
     console.warn(`Supabase permanent delete exception in ${tableName}:`, err);
     return false;
   }
+};
+
+export const deleteFactoryFromDatabase = async (id: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.deleteFactoryFromMySQL(id);
+  }
+  return true;
+};
+
+export const deleteProductFromDatabase = async (id: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.deleteProductFromMySQL(id);
+  }
+  return true;
+};
+
+export const fetchNotificationsFromDatabase = async (): Promise<NotificationItem[] | null> => {
+  if (isUsingMySQL()) {
+    return mysqlService.fetchNotificationsFromMySQL();
+  }
+  return null;
+};
+
+export const dismissNotificationInDatabase = async (id: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.dismissNotificationMySQL(id);
+  }
+  return true;
+};
+
+export const clearAllNotificationsInDatabase = async (): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.clearAllNotificationsMySQL();
+  }
+  return true;
+};
+
+export const markNotificationReadInDatabase = async (id: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.markNotificationReadMySQL(id);
+  }
+  return true;
 };

@@ -26,7 +26,8 @@ import {
   ArrowUpDown,
   Image as ImageIcon,
   AlertCircle,
-  Pencil
+  Pencil,
+  Receipt
 } from 'lucide-react';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { PartyCombobox } from '../components/common/PartyCombobox';
@@ -36,10 +37,13 @@ import { generatePurchaseBillPDF, generateSupplierPaymentPDF } from '../utils/pd
 export const Purchases: React.FC = () => {
   const { 
     purchases, 
+    supplierPayments,
     addPurchase, 
     updatePurchase,
     softDeletePurchase,
     recordSupplierPayment, 
+    updateSupplierPayment,
+    softDeleteSupplierPayment,
     parties, 
     products, 
     branches, 
@@ -80,6 +84,26 @@ export const Purchases: React.FC = () => {
     message: '',
     docTitle: ''
   });
+
+  // Main Tab State
+  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'payments'>('bills');
+
+  // Supplier Payment Management State
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentSupplierFilter, setPaymentSupplierFilter] = useState('all');
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentPageSize, setPaymentPageSize] = useState(10);
+  const [editingPayment, setEditingPayment] = useState<SupplierPayment | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState<number>(0);
+  const [editPaymentDate, setEditPaymentDate] = useState<string>('');
+  const [editPaymentTime, setEditPaymentTime] = useState<string>('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>('Bank Transfer');
+  const [editPaymentRef, setEditPaymentRef] = useState<string>('');
+  const [editPaymentNotes, setEditPaymentNotes] = useState<string>('');
+  const [editPaymentProofUrl, setEditPaymentProofUrl] = useState<string>('');
+  const [editPaymentProofStatus, setEditPaymentProofStatus] = useState<ProofStatus>('Not Required');
+  const [editPaymentError, setEditPaymentError] = useState<string>('');
+  const [deletePaymentModal, setDeletePaymentModal] = useState<{ isOpen: boolean; payment: SupplierPayment | null }>({ isOpen: false, payment: null });
 
   // Advanced Filters State
   const [showFilters, setShowFilters] = useState(false);
@@ -265,10 +289,24 @@ export const Purchases: React.FC = () => {
         dueDate,
         branchId,
         items: items.map((i, idx) => ({ ...i, id: `pbi-${Date.now()}-${idx}` })),
+        amountPaid: amountPaid,
         proofUrl: proofUrl || undefined,
         proofStatus: proofStatus || (proofUrl ? 'Proof Attached' : 'Not Required'),
         notes: notes || undefined
       });
+
+      // If amountPaid changed and an initial payment exists, update the initial payment receipt
+      if (editingPurchase.amountPaid !== amountPaid) {
+        const initSP = supplierPayments.find(sp => sp.purchaseBillId === editingPurchase.id && !sp.isDeleted && sp.receiptNumber.includes('INIT'));
+        if (initSP) {
+          updateSupplierPayment(initSP.id, {
+            amountPaid,
+            paymentDate: billDate,
+            paymentTime: billTime || undefined
+          });
+        }
+      }
+
       if (res.success) {
         setActionFeedback({ type: 'success', message: res.message });
         setIsModalOpen(false);
@@ -348,6 +386,76 @@ export const Purchases: React.FC = () => {
       setErrorMsg(res.message);
     }
   };
+
+  const handleOpenEditPayment = (payment: SupplierPayment) => {
+    setEditingPayment(payment);
+    setEditPaymentAmount(payment.amountPaid);
+    setEditPaymentDate(payment.paymentDate);
+    setEditPaymentTime(payment.paymentTime || '');
+    setEditPaymentMethod(payment.paymentMethod);
+    setEditPaymentRef(payment.referenceNo || '');
+    setEditPaymentNotes(payment.notes || '');
+    setEditPaymentProofUrl(payment.proofUrl || '');
+    setEditPaymentProofStatus(payment.proofStatus || (payment.proofUrl ? 'Proof Attached' : 'Not Required'));
+    setEditPaymentError('');
+  };
+
+  const handleSaveEditPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPayment) return;
+    setEditPaymentError('');
+
+    const res = updateSupplierPayment(editingPayment.id, {
+      amountPaid: editPaymentAmount,
+      paymentDate: editPaymentDate,
+      paymentTime: editPaymentTime || undefined,
+      paymentMethod: editPaymentMethod,
+      referenceNo: editPaymentRef || undefined,
+      notes: editPaymentNotes || undefined,
+      proofUrl: editPaymentProofUrl || undefined,
+      proofStatus: editPaymentProofStatus
+    });
+
+    if (res.success) {
+      setActionFeedback({ type: 'success', message: res.message });
+      setEditingPayment(null);
+    } else {
+      setEditPaymentError(res.message);
+    }
+  };
+
+  const handleDeletePaymentConfirm = () => {
+    if (!deletePaymentModal.payment) return;
+    const res = softDeleteSupplierPayment(deletePaymentModal.payment.id);
+    if (res.success) {
+      setActionFeedback({ type: 'success', message: res.message });
+    } else {
+      setActionFeedback({ type: 'error', message: res.message });
+    }
+    setDeletePaymentModal({ isOpen: false, payment: null });
+  };
+
+  // Supplier Payments list and filters
+  const activeSupplierPayments = supplierPayments.filter(sp => !sp.isDeleted);
+  const filteredSupplierPayments = activeSupplierPayments.filter(sp => {
+    if (selectedBranchId !== 'all' && sp.branchId !== selectedBranchId) return false;
+    if (paymentSupplierFilter !== 'all' && sp.supplierId !== paymentSupplierFilter) return false;
+    if (paymentSearch.trim()) {
+      const q = paymentSearch.toLowerCase().trim();
+      const matchVoucher = sp.receiptNumber.toLowerCase().includes(q);
+      const matchSupplier = sp.supplierName.toLowerCase().includes(q);
+      const matchBill = sp.purchaseBillNumber?.toLowerCase().includes(q);
+      const matchRef = sp.referenceNo?.toLowerCase().includes(q);
+      if (!matchVoucher && !matchSupplier && !matchBill && !matchRef) return false;
+    }
+    return true;
+  });
+
+  const totalPaymentRecords = filteredSupplierPayments.length;
+  const paginatedSupplierPayments = filteredSupplierPayments.slice(
+    (paymentPage - 1) * paymentPageSize,
+    paymentPage * paymentPageSize
+  );
 
   // Filter purchases (excluding soft-deleted)
   const activePurchases = purchases.filter(pb => !pb.isDeleted);
@@ -482,8 +590,38 @@ export const Purchases: React.FC = () => {
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+      {/* Top Tabs: Purchases Bills vs Supplier Payments */}
+      <div className="flex border-b border-slate-200 dark:border-slate-800 text-xs font-semibold overflow-x-auto">
+        <button
+          onClick={() => setActiveMainTab('bills')}
+          className={`px-5 py-3 border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
+            activeMainTab === 'bills'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <ShoppingBag className="w-3.5 h-3.5" />
+          Purchases & Supplier Bills ({activePurchases.length})
+        </button>
+
+        <button
+          onClick={() => setActiveMainTab('payments')}
+          className={`px-5 py-3 border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
+            activeMainTab === 'payments'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5" />
+          Supplier Payment Receipts ({activeSupplierPayments.length})
+        </button>
+      </div>
+
+      {/* PURCHASES BILLS TAB */}
+      {activeMainTab === 'bills' && (
+        <div className="space-y-6">
+          {/* Filter Bar */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto">
             <span className="text-xs font-semibold text-slate-400 mr-1 flex items-center gap-1">
@@ -912,6 +1050,172 @@ export const Purchases: React.FC = () => {
           }}
         />
       </div>
+      </div>
+      )}
+
+      {/* SUPPLIER PAYMENT RECEIPTS TAB */}
+      {activeMainTab === 'payments' && (
+        <div className="space-y-4">
+          {/* Search & Filters */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="relative w-full md:w-96">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by voucher #, supplier, bill #, ref..."
+                value={paymentSearch}
+                onChange={(e) => {
+                  setPaymentSearch(e.target.value);
+                  setPaymentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <select
+                value={paymentSupplierFilter}
+                onChange={(e) => {
+                  setPaymentSupplierFilter(e.target.value);
+                  setPaymentPage(1);
+                }}
+                className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="all">All Suppliers</option>
+                {parties.filter(p => p.type === 'Supplier' || p.type === 'Both').map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+
+              <div className="text-xs text-slate-500 font-medium whitespace-nowrap">
+                Showing <span className="font-bold text-slate-900 dark:text-white">{totalPaymentRecords}</span> Receipts
+              </div>
+            </div>
+          </div>
+
+          {/* Supplier Payments Table */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden space-y-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="p-3">Voucher #</th>
+                    <th className="p-3">Date & Time</th>
+                    <th className="p-3">Supplier Name</th>
+                    <th className="p-3">Purchase Bill #</th>
+                    <th className="p-3">Payment Method</th>
+                    <th className="p-3 text-right">Amount Paid</th>
+                    <th className="p-3 text-right">Remaining Bill Balance</th>
+                    <th className="p-3 text-center">Proof</th>
+                    <th className="p-3">Notes / Ref</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {paginatedSupplierPayments.length > 0 ? (
+                    paginatedSupplierPayments.map(sp => (
+                      <tr key={sp.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                        <td className="p-3 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                          {sp.receiptNumber}
+                        </td>
+                        <td className="p-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                          <div>{formatDate(sp.paymentDate)}</div>
+                          {sp.paymentTime && <div className="text-[10px] text-slate-400">{sp.paymentTime}</div>}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-900 dark:text-white">
+                          {sp.supplierName}
+                        </td>
+                        <td className="p-3 font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          {sp.purchaseBillNumber}
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/50 whitespace-nowrap">
+                            {sp.paymentMethod}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          {formatPKR(sp.amountPaid)}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                          {formatPKR(sp.remainingPayable)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <ProofBadge
+                            status={sp.proofStatus}
+                            proofUrl={sp.proofUrl}
+                            onClick={sp.proofUrl ? () => setProofModal({ isOpen: true, url: sp.proofUrl, docNo: sp.receiptNumber }) : undefined}
+                          />
+                        </td>
+                        <td className="p-3 text-slate-500 max-w-xs truncate">
+                          {sp.referenceNo ? <span className="font-mono text-slate-700 dark:text-slate-300 mr-1">[{sp.referenceNo}]</span> : null}
+                          {sp.notes || '-'}
+                        </td>
+                        <td className="p-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setSelectedReceipt(sp)}
+                              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                              title="View Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenEditPayment(sp)}
+                              className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/60 transition"
+                              title="Edit Supplier Payment"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDeletePaymentModal({ isOpen: true, payment: sp })}
+                              className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition"
+                              title="Delete Supplier Payment"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDownloadSupplierPaymentPDF(sp)}
+                              className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition"
+                              title="Download PDF Voucher"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenSupplierPaymentWhatsApp(sp)}
+                              className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 transition"
+                              title="Share on WhatsApp"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="p-8 text-center text-slate-400">
+                        No supplier payment receipts found matching criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={paymentPage}
+              totalRecords={totalPaymentRecords}
+              pageSize={paymentPageSize}
+              onPageChange={setPaymentPage}
+              onPageSizeChange={(newSize) => {
+                setPaymentPageSize(newSize);
+                setPaymentPage(1);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* CREATE / EDIT PURCHASE MODAL */}
       <Modal
@@ -1374,6 +1678,144 @@ export const Purchases: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* EDIT SUPPLIER PAYMENT MODAL */}
+      {editingPayment && (
+        <Modal
+          isOpen={!!editingPayment}
+          onClose={() => setEditingPayment(null)}
+          title={`Edit Supplier Payment — Voucher ${editingPayment.receiptNumber}`}
+          subtitle={`Supplier: ${editingPayment.supplierName} | Bill: ${editingPayment.purchaseBillNumber}`}
+          maxWidth="sm"
+        >
+          <form onSubmit={handleSaveEditPayment} className="space-y-4 text-xs">
+            {editPaymentError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editPaymentError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Payment Amount (PKR) *
+              </label>
+              <CurrencyInput
+                value={editPaymentAmount}
+                onChange={setEditPaymentAmount}
+                placeholder="0"
+                prefix="Rs."
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Payment Method *
+                </label>
+                <select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value as PaymentMethod)}
+                  className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                >
+                  {['Bank Transfer', 'Cash', 'Cheque', 'Online Transfer', 'JazzCash', 'Easypaisa', 'Other'].map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={editPaymentDate}
+                    onChange={(e) => setEditPaymentDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Time
+                  </label>
+                  <input
+                    type="time"
+                    value={editPaymentTime}
+                    onChange={(e) => setEditPaymentTime(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Bank / Voucher Ref No
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Meezan-FT-9941"
+                value={editPaymentRef}
+                onChange={(e) => setEditPaymentRef(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <FileUpload
+              label="Supplier Payment Voucher / Proof"
+              proofUrl={editPaymentProofUrl}
+              onProofChange={(url, status) => {
+                setEditPaymentProofUrl(url);
+                setEditPaymentProofStatus(status);
+              }}
+            />
+
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Disbursement Notes
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Adjusted payment amount"
+                value={editPaymentNotes}
+                onChange={(e) => setEditPaymentNotes(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setEditingPayment(null)}
+                className="px-4 py-2 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl font-semibold shadow-md transition-colors"
+              >
+                Save Payment Changes
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* CONFIRMATION MODAL FOR SUPPLIER PAYMENT DELETION */}
+      <ConfirmModal
+        isOpen={deletePaymentModal.isOpen}
+        onClose={() => setDeletePaymentModal({ isOpen: false, payment: null })}
+        onConfirm={handleDeletePaymentConfirm}
+        type="delete"
+        title="Delete Supplier Payment"
+        message={`Are you sure you want to delete supplier payment ${deletePaymentModal.payment?.receiptNumber} (${formatPKR(deletePaymentModal.payment?.amountPaid || 0)})? The paid amount will be reversed back to bill ${deletePaymentModal.payment?.purchaseBillNumber}.`}
+        confirmText="Delete Payment"
+      />
 
       {/* PROOF VIEWER MODAL */}
       <ProofViewerModal
