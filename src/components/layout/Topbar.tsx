@@ -14,7 +14,8 @@ import {
   ShieldCheck,
   Building,
   LogOut,
-  Flame
+  Flame,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -41,7 +42,9 @@ export const Topbar: React.FC<TopbarProps> = ({
     notifications,
     markNotificationRead,
     clearAllNotifications,
-    businessName
+    businessName,
+    refreshData,
+    isSyncing
   } = useApp();
   const { user, logout, isSupabaseMode } = useAuth();
   const navigate = useNavigate();
@@ -117,6 +120,25 @@ export const Topbar: React.FC<TopbarProps> = ({
           title="Toggle Dark/Light Mode"
         >
           {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
+        </button>
+
+        {/* Live Cloud Database Sync Status / Refresh Button */}
+        <button
+          type="button"
+          onClick={() => refreshData()}
+          disabled={isSyncing}
+          title="Live Sync: All laptops & phones automatically stay updated with TiDB Cloud. Click to sync instantly."
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
+            isSyncing 
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' 
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <RefreshCw className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+          <span className="hidden md:inline text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+            {isSyncing ? 'Syncing...' : 'Live Sync'}
+          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
         </button>
 
         {/* Notifications Popover */}

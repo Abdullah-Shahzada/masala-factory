@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Factory,
   FactoryStatus,
@@ -166,6 +166,8 @@ interface AppContextType {
   setBusinessName: (name: string) => void;
   companyProfile: CompanyProfile;
   updateCompanyProfile: (profile: Partial<CompanyProfile>) => void;
+  refreshData: () => Promise<void>;
+  isSyncing: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -517,90 +519,146 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { saveLocalStorage('MF_EXPENSES', expenses); }, [expenses]);
   useEffect(() => { saveLocalStorage('MF_SCHEDULES', scheduleItems); }, [scheduleItems]);
 
-  // Live Database Connection & Synchronization (MySQL or Supabase)
-  useEffect(() => {
-    if (!isDatabaseConnected()) return;
+  // -------------------------------------------------------------
+  // Real-Time Multi-Device Synchronization Engine
+  // -------------------------------------------------------------
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const isSyncingRef = useRef<boolean>(false);
 
-    let isMounted = true;
-    const loadFromSupabase = async () => {
+  // Cross-Tab Broadcast Channel (instant sync across tabs on same device)
+  const notifyBroadcastSync = useCallback(() => {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
-        const [
-          dbFactories,
-          dbParties,
-          dbProducts,
-          dbBills,
-          dbPayments,
-          dbPurchases,
-          dbExpenses,
-          dbProfile,
-          dbSupplierPayments,
-          dbSchedules
-        ] = await Promise.all([
-          fetchFactoriesFromSupabase(),
-          fetchPartiesFromSupabase(),
-          fetchProductsFromSupabase(),
-          fetchSalesBillsFromSupabase(),
-          fetchPaymentsReceivedFromSupabase(),
-          fetchPurchasesFromSupabase(),
-          fetchExpensesFromSupabase(),
-          fetchCompanyProfileFromSupabase(),
-          fetchSupplierPaymentsFromSupabase(),
-          fetchPaymentSchedulesFromSupabase()
-        ]);
+        const ch = new BroadcastChannel('mf_cross_device_sync');
+        ch.postMessage({ type: 'MUTATION', timestamp: Date.now() });
+        ch.close();
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
 
-        if (!isMounted) return;
+  const syncWithDatabase = useCallback(async (isInitial = false) => {
+    if (!isDatabaseConnected() || isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    setIsSyncing(true);
 
-        if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
+    try {
+      const [
+        dbFactories,
+        dbParties,
+        dbProducts,
+        dbBills,
+        dbPayments,
+        dbPurchases,
+        dbExpenses,
+        dbProfile,
+        dbSupplierPayments,
+        dbSchedules
+      ] = await Promise.all([
+        fetchFactoriesFromSupabase(),
+        fetchPartiesFromSupabase(),
+        fetchProductsFromSupabase(),
+        fetchSalesBillsFromSupabase(),
+        fetchPaymentsReceivedFromSupabase(),
+        fetchPurchasesFromSupabase(),
+        fetchExpensesFromSupabase(),
+        fetchCompanyProfileFromSupabase(),
+        fetchSupplierPaymentsFromSupabase(),
+        fetchPaymentSchedulesFromSupabase()
+      ]);
 
-        // If Supabase has parties, load them. If empty, seed initial parties to Supabase
-        if (dbParties && dbParties.length > 0) {
-          setParties(dbParties);
-        } else if (isDatabaseConnected()) {
-          // Seed initial parties and update local state with real UUIDs
-          const seededParties: Party[] = [];
-          for (const p of INITIAL_PARTIES) {
-            const uuid = await insertPartyToSupabase(p);
-            seededParties.push({ ...p, id: uuid || p.id });
+      if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
+
+      if (dbParties && dbParties.length > 0) {
+        setParties(dbParties);
+      } else if (isInitial && isDatabaseConnected()) {
+        const seededParties: Party[] = [];
+        for (const p of INITIAL_PARTIES) {
+          const uuid = await insertPartyToSupabase(p);
+          seededParties.push({ ...p, id: uuid || p.id });
+        }
+        if (seededParties.length > 0) setParties(seededParties);
+      }
+
+      if (dbProducts && dbProducts.length > 0) {
+        setProducts(dbProducts);
+      } else if (isInitial && isDatabaseConnected()) {
+        const seededProducts: Product[] = [];
+        for (const pr of INITIAL_PRODUCTS) {
+          const uuid = await insertProductToSupabase(pr);
+          seededProducts.push({ ...pr, id: uuid || pr.id });
+        }
+        if (seededProducts.length > 0) setProducts(seededProducts);
+      }
+
+      if (dbBills !== null) setSalesBills(dbBills);
+      if (dbPayments !== null) setPaymentsReceived(dbPayments);
+      if (dbPurchases !== null) setPurchases(dbPurchases);
+      if (dbExpenses !== null) setExpenses(dbExpenses);
+      if (dbProfile) {
+        setCompanyProfile(prev => ({
+          ...prev,
+          ...dbProfile,
+          logoUrl: dbProfile.logoUrl || prev.logoUrl
+        }));
+      }
+      if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
+      if (dbSchedules !== null) setScheduleItems(dbSchedules);
+    } catch (err) {
+      console.warn('[Sync] Could not load live data from database:', err);
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // Multi-Device Auto-Sync (Initial Mount, Focus, Visibility Change, and Periodic 12s Heartbeat)
+  useEffect(() => {
+    // 1. Initial Sync
+    syncWithDatabase(true);
+
+    // 2. BroadcastChannel Listener for Instant Multi-Tab Sync
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        channel = new BroadcastChannel('mf_cross_device_sync');
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'MUTATION') {
+            syncWithDatabase(false);
           }
-          if (seededParties.length > 0) setParties(seededParties);
-        }
-
-        // If Supabase has products, load them. If empty, seed initial products
-        if (dbProducts && dbProducts.length > 0) {
-          setProducts(dbProducts);
-        } else if (isDatabaseConnected()) {
-          const seededProducts: Product[] = [];
-          for (const pr of INITIAL_PRODUCTS) {
-            const uuid = await insertProductToSupabase(pr);
-            seededProducts.push({ ...pr, id: uuid || pr.id });
-          }
-          if (seededProducts.length > 0) setProducts(seededProducts);
-        }
-
-        if (dbBills !== null) setSalesBills(dbBills);
-        if (dbPayments !== null) setPaymentsReceived(dbPayments);
-        if (dbPurchases !== null) setPurchases(dbPurchases);
-        if (dbExpenses !== null) setExpenses(dbExpenses);
-        if (dbProfile) {
-          setCompanyProfile(prev => ({
-            ...prev,
-            ...dbProfile,
-            logoUrl: dbProfile.logoUrl || prev.logoUrl
-          }));
-        }
-        if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
-        if (dbSchedules !== null) setScheduleItems(dbSchedules);
+        };
       } catch (err) {
-        console.warn('Could not load live data from Supabase, keeping local state:', err);
+        console.warn('BroadcastChannel error:', err);
+      }
+    }
+
+    // 3. Sync whenever user switches back to this window / tab (Focus or Visibility Change)
+    const handleFocus = () => {
+      syncWithDatabase(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncWithDatabase(false);
       }
     };
 
-    loadFromSupabase();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 4. Background Heartbeat every 12 seconds so all laptops and mobile PWAs stay in sync
+    const intervalId = setInterval(() => {
+      syncWithDatabase(false);
+    }, 12000);
 
     return () => {
-      isMounted = false;
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(intervalId);
+      channel?.close();
     };
-  }, []);
+  }, [syncWithDatabase]);
 
   // Sync Dark Mode class with HTML tag
   useEffect(() => {
@@ -763,6 +821,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       saveSalesBillToSupabase(newBill);
     }
+    notifyBroadcastSync();
 
     // If initial payment was received upon bill creation, record a distinct PaymentReceived
     if (billData.receivedAmount > 0) {
@@ -813,6 +872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       saveSalesBillToSupabase(updated);
     }
+    notifyBroadcastSync();
     return { success: true, message: `Sales Bill ${bill.billNumber} updated successfully.` };
   };
 
@@ -847,6 +907,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       saveSalesBillToSupabase(deletedBill);
     }
+    notifyBroadcastSync();
 
     return {
       success: true,
@@ -889,6 +950,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedBy: undefined
       });
     }
+    notifyBroadcastSync();
 
     return {
       success: true,
@@ -911,6 +973,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       permanentDeleteRecordFromDatabase('sales_bills', id);
     }
+    notifyBroadcastSync();
     return {
       success: true,
       message: `Sales Bill ${bill.billNumber} permanently deleted.`
@@ -968,6 +1031,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       savePaymentReceivedToSupabase(newPayment);
     }
+    notifyBroadcastSync();
 
     // Update sales bills based on allocations
     setSalesBills(prev => prev.map(bill => {
@@ -1199,6 +1263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       permanentDeleteRecordFromDatabase('payments_received', id);
     }
+    notifyBroadcastSync();
     return {
       success: true,
       message: `Payment Receipt ${payment.receiptNumber} permanently deleted.`
@@ -1884,7 +1949,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       businessName,
       setBusinessName,
       companyProfile,
-      updateCompanyProfile
+      updateCompanyProfile,
+
+      refreshData: () => syncWithDatabase(false),
+      isSyncing
     }}>
       {children}
     </AppContext.Provider>

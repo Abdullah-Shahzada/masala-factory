@@ -33,6 +33,7 @@ import {
   Calendar,
   DollarSign,
   CheckCircle2,
+  RefreshCw,
   MessageSquare,
   Download,
   Share2,
@@ -55,7 +56,9 @@ export const SalesBills: React.FC = () => {
     products, 
     branches, 
     selectedBranchId, 
-    companyProfile
+    companyProfile,
+    refreshData,
+    isSyncing
   } = useApp();
 
   // Tab State: Active Bills vs Recently Deleted
@@ -515,18 +518,35 @@ export const SalesBills: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            if (selectedBranchId !== 'all') {
-              setBranchId(selectedBranchId as BranchId);
-            }
-            openAddModal();
-          }}
-          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-950/20 flex items-center gap-2 transition-colors self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Create New Sales Bill
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => refreshData()}
+            disabled={isSyncing}
+            title="Refresh & sync latest bills across laptops"
+            className={`px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+              isSyncing 
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600' 
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+            <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (selectedBranchId !== 'all') {
+                setBranchId(selectedBranchId as BranchId);
+              }
+              openAddModal();
+            }}
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-950/20 flex items-center gap-2 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Sales Bill
+          </button>
+        </div>
       </div>
 
       {/* Action Feedback Banner */}

@@ -451,8 +451,8 @@ app.post('/api/sales-bills', async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
        party_id = VALUES(party_id), party_name = VALUES(party_name), party_phone = VALUES(party_phone),
-       bill_date = VALUES(bill_date), grand_total = VALUES(grand_total), received_amount = VALUES(received_amount),
-       remaining_amount = VALUES(remaining_amount), status = VALUES(status), proof_url = VALUES(proof_url),
+       bill_date = VALUES(bill_date), bill_time = VALUES(bill_time), grand_total = VALUES(grand_total), received_amount = VALUES(received_amount),
+       remaining_amount = VALUES(remaining_amount), status = VALUES(status), proof_url = VALUES(proof_url), proof_status = VALUES(proof_status),
        notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
       [id, factoryId, b.billNumber, b.billDate, b.billTime || null, partyId, b.partyName, b.partyPhone || '', b.grandTotal, b.receivedAmount || 0, b.remainingAmount || 0, b.status, b.proofUrl || null, b.proofStatus || 'Not Required', b.notes || null, b.isDeleted ? 1 : 0, b.deletedAt || null, b.deletedBy || null]
     );
@@ -559,9 +559,12 @@ app.post('/api/payments-received', async (req, res) => {
       `INSERT INTO payments_received (id, factory_id, receipt_number, party_id, party_name, party_phone, amount, payment_date, payment_time, payment_method, reference_no, proof_url, proof_status, status, is_initial_payment, notes, is_deleted, deleted_at, deleted_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-       party_id = VALUES(party_id), party_name = VALUES(party_name), amount = VALUES(amount),
-       payment_date = VALUES(payment_date), payment_method = VALUES(payment_method), status = VALUES(status),
-       notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at)`,
+       party_id = VALUES(party_id), party_name = VALUES(party_name), party_phone = VALUES(party_phone),
+       amount = VALUES(amount), payment_date = VALUES(payment_date), payment_time = VALUES(payment_time),
+       payment_method = VALUES(payment_method), reference_no = VALUES(reference_no),
+       proof_url = VALUES(proof_url), proof_status = VALUES(proof_status),
+       status = VALUES(status), is_initial_payment = VALUES(is_initial_payment),
+       notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
       [id, factoryId, p.receiptNumber, partyId, p.partyName, p.partyPhone || null, p.amountReceived, p.paymentDate, p.paymentTime || null, p.paymentMethod, p.referenceNo || null, p.proofUrl || null, p.proofStatus || 'Verified', p.status || 'Completed', p.isInitialPayment ? 1 : 0, p.notes || null, p.isDeleted ? 1 : 0, p.deletedAt || null, p.deletedBy || null]
     );
 
@@ -674,7 +677,8 @@ app.post('/api/purchases', async (req, res) => {
        ON DUPLICATE KEY UPDATE
        supplier_id = VALUES(supplier_id), supplier_name = VALUES(supplier_name), bill_date = VALUES(bill_date),
        grand_total = VALUES(grand_total), paid_amount = VALUES(paid_amount), outstanding_amount = VALUES(outstanding_amount),
-       status = VALUES(status), notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at)`,
+       status = VALUES(status), proof_url = VALUES(proof_url), proof_status = VALUES(proof_status),
+       notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
       [id, factoryId, p.billNumber, supplierId, p.supplierName, p.billDate, p.grandTotal, p.amountPaid || 0, p.outstandingAmount || 0, p.status, p.proofUrl || null, p.proofStatus || 'Not Required', p.notes || null, p.isDeleted ? 1 : 0, p.deletedAt || null, p.deletedBy || null]
     );
 
@@ -763,8 +767,13 @@ app.post('/api/supplier-payments', async (req, res) => {
       `INSERT INTO supplier_payments (id, factory_id, purchase_id, receipt_number, purchase_bill_number, supplier_id, supplier_name, amount, payment_date, payment_time, payment_method, reference_no, proof_url, proof_status, remaining_payable, notes, is_deleted, deleted_at, deleted_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-       amount = VALUES(amount), remaining_payable = VALUES(remaining_payable), notes = VALUES(notes),
-       is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at)`,
+       purchase_id = VALUES(purchase_id), purchase_bill_number = VALUES(purchase_bill_number),
+       supplier_id = VALUES(supplier_id), supplier_name = VALUES(supplier_name),
+       amount = VALUES(amount), payment_date = VALUES(payment_date), payment_time = VALUES(payment_time),
+       payment_method = VALUES(payment_method), reference_no = VALUES(reference_no),
+       proof_url = VALUES(proof_url), proof_status = VALUES(proof_status),
+       remaining_payable = VALUES(remaining_payable), notes = VALUES(notes),
+       is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
       [id, factoryId, sp.purchaseBillId?.length === 36 ? sp.purchaseBillId : null, sp.receiptNumber, sp.purchaseBillNumber || `PB-${sp.receiptNumber}`, supplierId, sp.supplierName, sp.amountPaid, sp.paymentDate, sp.paymentTime || null, sp.paymentMethod, sp.referenceNo || null, sp.proofUrl || null, sp.proofStatus || 'Verified', sp.remainingPayable || 0, sp.notes || null, sp.isDeleted ? 1 : 0, sp.deletedAt || null, sp.deletedBy || null]
     );
     res.json({ success: true, id });
@@ -829,8 +838,10 @@ app.post('/api/expenses', async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
        title = VALUES(title), category = VALUES(category), amount = VALUES(amount),
-       expense_date = VALUES(expense_date), paid_to = VALUES(paid_to), payment_method = VALUES(payment_method),
-       notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at)`,
+       expense_date = VALUES(expense_date), expense_time = VALUES(expense_time),
+       paid_to = VALUES(paid_to), payment_method = VALUES(payment_method), reference_no = VALUES(reference_no),
+       proof_url = VALUES(proof_url), proof_status = VALUES(proof_status), description = VALUES(description),
+       notes = VALUES(notes), is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
       [id, factoryId, e.expenseNumber, e.title || e.category, e.category, e.amount, e.expenseDate, e.expenseTime || null, e.paidTo, e.paymentMethod, e.referenceNo || null, e.proofUrl || null, e.proofStatus || 'Not Required', e.notes || null, e.notes || null, e.isDeleted ? 1 : 0, e.deletedAt || null, e.deletedBy || null]
     );
     res.json({ success: true, id });
@@ -916,9 +927,11 @@ app.post('/api/payment-schedules', async (req, res) => {
       `INSERT INTO payment_schedules (id, factory_id, type, party_id, party_name, party_phone, related_bill_number, due_date, scheduled_amount, paid_received_amount, remaining_amount, status, description, notes, parent_schedule_id, installment_no, is_deleted, deleted_at, deleted_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
+       party_id = VALUES(party_id), party_name = VALUES(party_name), party_phone = VALUES(party_phone),
+       related_bill_number = VALUES(related_bill_number), due_date = VALUES(due_date),
        scheduled_amount = VALUES(scheduled_amount), paid_received_amount = VALUES(paid_received_amount),
        remaining_amount = VALUES(remaining_amount), status = VALUES(status), notes = VALUES(notes),
-       is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at)`,
+       is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
       [id, factoryId, s.type === 'ToPay' ? 'ToPay' : 'ToReceive', s.partyId?.length === 36 ? s.partyId : null, s.partyName, s.partyPhone || null, s.relatedBillNumber || null, s.dueDate, s.scheduledAmount, s.paidReceivedAmount || 0, s.remainingAmount || s.scheduledAmount, s.status, s.notes || null, s.notes || null, s.parentScheduleId?.length === 36 ? s.parentScheduleId : null, s.installmentNo || null, s.isDeleted ? 1 : 0, s.deletedAt || null, s.deletedBy || null]
     );
 

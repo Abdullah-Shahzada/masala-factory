@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
-import { Upload, X, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Upload, X, Image as ImageIcon, AlertCircle, Loader2 } from 'lucide-react';
 import { ProofStatus } from '../../types';
+import { compressImage } from '../../utils/imageCompressor';
 
 interface FileUploadProps {
   label?: string;
@@ -24,6 +25,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   className = ''
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
   const currentProof = value || proofUrl;
 
   const updateProof = (url: string, status: ProofStatus) => {
@@ -31,17 +33,25 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     if (onChange) onChange(url);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Create a local data URL using FileReader so it previews and displays in the session
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      updateProof(result, 'Proof Attached');
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsCompressing(true);
+      const compressed = await compressImage(file, 1200, 1200, 0.75);
+      updateProof(compressed, 'Proof Attached');
+    } catch (err) {
+      console.warn('Image compression fallback:', err);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        updateProof(result, 'Proof Attached');
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleRemove = () => {
@@ -121,16 +131,28 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       ) : (
         <button
           type="button"
+          disabled={isCompressing}
           onClick={() => fileInputRef.current?.click()}
-          className="w-full border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-xl p-3 text-center transition-all bg-white dark:bg-slate-900/40 hover:bg-emerald-50/30 flex flex-col items-center justify-center gap-1"
+          className="w-full border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-xl p-3 text-center transition-all bg-white dark:bg-slate-900/40 hover:bg-emerald-50/30 flex flex-col items-center justify-center gap-1 disabled:opacity-50"
         >
-          <Upload className="w-5 h-5 text-slate-400 group-hover:text-emerald-600" />
-          <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">
-            Upload Photo Proof / Receipt
-          </span>
-          <span className="text-[10px] text-slate-400">
-            Select image from device camera or gallery (JPG, PNG, WebP)
-          </span>
+          {isCompressing ? (
+            <>
+              <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                Optimizing & Compressing Photo...
+              </span>
+            </>
+          ) : (
+            <>
+              <Upload className="w-5 h-5 text-slate-400 group-hover:text-emerald-600" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                Upload Photo Proof / Receipt
+              </span>
+              <span className="text-[10px] text-slate-400">
+                Select image from device camera or gallery (JPG, PNG, WebP)
+              </span>
+            </>
+          )}
         </button>
       )}
     </div>
