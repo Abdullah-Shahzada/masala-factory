@@ -15,7 +15,8 @@ import {
   Building,
   LogOut,
   Flame,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -41,6 +42,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     toggleDarkMode,
     notifications,
     markNotificationRead,
+    deleteNotification,
     clearAllNotifications,
     businessName,
     refreshData,
@@ -185,15 +187,28 @@ export const Topbar: React.FC<TopbarProps> = ({
                     <div
                       key={n.id}
                       onClick={() => markNotificationRead(n.id)}
-                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-colors relative group ${
                         n.read 
                           ? 'bg-slate-50/50 dark:bg-slate-800/40 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400' 
                           : 'bg-emerald-50/60 dark:bg-emerald-950/40 border-emerald-200/80 dark:border-emerald-800/80 text-slate-900 dark:text-white font-medium'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-emerald-700 dark:text-emerald-400">{n.title}</span>
-                        <span className="text-[10px] text-slate-400">{n.date}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-400 truncate">{n.title}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-slate-400">{n.date}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(n.id);
+                            }}
+                            title="Delete notification"
+                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors opacity-70 group-hover:opacity-100"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <p className="mt-1 text-slate-600 dark:text-slate-300">{n.message}</p>
                     </div>

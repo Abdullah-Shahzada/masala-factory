@@ -231,7 +231,21 @@ export const insertPaymentScheduleToMySQL = async (item: PaymentScheduleItem): P
   return res?.id || null;
 };
 
-// 11. PERMANENT DELETE OPERATIONS
+// 11. PERMANENT & CASCADE DELETE OPERATIONS
+export const softDeleteSalesBillCascadeMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean; voidedPaymentCount?: number }>(`/sales-bills/${id}/soft-delete`, {
+    method: 'POST'
+  });
+  return Boolean(res?.success);
+};
+
+export const restoreSalesBillCascadeMySQL = async (id: string): Promise<boolean> => {
+  const res = await request<{ success: boolean }>(`/sales-bills/${id}/restore`, {
+    method: 'POST'
+  });
+  return Boolean(res?.success);
+};
+
 export const permanentDeleteSalesBillFromMySQL = async (id: string): Promise<boolean> => {
   const res = await request<{ success: boolean }>(`/sales-bills/${id}`, { method: 'DELETE' });
   return Boolean(res?.success);

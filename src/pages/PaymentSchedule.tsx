@@ -59,12 +59,14 @@ export const PaymentSchedule: React.FC = () => {
     updateScheduleStatus, 
     updateScheduleItem,
     createAdditionalSchedule,
+    softDeleteScheduleItem,
     parties, 
     branches, 
     selectedBranchId 
   } = useApp();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; item: PaymentScheduleItem | null }>({ isOpen: false, item: null });
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Password verification modal for status transition (Complete / Reopen)
@@ -598,6 +600,14 @@ export const PaymentSchedule: React.FC = () => {
                           <Edit3 className="w-4 h-4" />
                         </button>
 
+                        <button
+                          onClick={() => setDeleteModal({ isOpen: true, item })}
+                          title="Delete Schedule Entry"
+                          className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
                         {item.status !== 'Completed' ? (
                           <button
                             onClick={() => handlePromptComplete(item)}
@@ -1001,6 +1011,22 @@ export const PaymentSchedule: React.FC = () => {
         title="Share Payment Schedule Reminder"
         recipientLabel={waData.partyName}
         referenceNumber={waData.refNumber}
+      />
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, item: null })}
+        onConfirm={() => {
+          if (deleteModal.item) {
+            softDeleteScheduleItem(deleteModal.item.id);
+            setDeleteModal({ isOpen: false, item: null });
+          }
+        }}
+        title="Delete Schedule Entry"
+        message={`Are you sure you want to delete this payment schedule for "${deleteModal.item?.partyName}" (Rs. ${(deleteModal.item?.scheduledAmount || 0).toLocaleString('en-PK')})? It will be moved to Recently Deleted.`}
+        confirmText="Delete Schedule"
+        isDanger={true}
       />
 
     </div>

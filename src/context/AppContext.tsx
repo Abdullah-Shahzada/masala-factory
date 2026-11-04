@@ -57,7 +57,9 @@ import {
   insertPaymentScheduleToSupabase,
   softDeleteRecordInSupabase,
   restoreRecordInSupabase,
-  permanentDeleteRecordFromDatabase
+  permanentDeleteRecordFromDatabase,
+  softDeleteSalesBillCascadeToDatabase,
+  restoreSalesBillCascadeToDatabase
 } from '../services/supabaseService';
 import { generateUUID } from '../utils/uuid';
 
@@ -83,6 +85,7 @@ interface AppContextType {
   // Notifications
   notifications: NotificationItem[];
   markNotificationRead: (id: string) => void;
+  deleteNotification: (id: string) => void;
   clearAllNotifications: () => void;
 
   // Parties
@@ -102,8 +105,8 @@ interface AppContextType {
   salesBills: SalesBill[];
   addSalesBill: (bill: Omit<SalesBill, 'id' | 'createdAt' | 'remainingAmount' | 'status'>) => SalesBill;
   updateSalesBill: (id: string, bill: Partial<SalesBill>) => { success: boolean; message: string };
-  softDeleteSalesBill: (id: string, passwordInput?: string) => { success: boolean; message: string };
-  restoreSalesBill: (id: string, passwordInput?: string) => { success: boolean; message: string };
+  softDeleteSalesBill: (id: string, cascadeLinkedReceipts?: boolean) => { success: boolean; message: string; deletedPaymentCount?: number };
+  restoreSalesBill: (id: string, restoreLinkedReceipts?: boolean) => { success: boolean; message: string };
   permanentDeleteSalesBill: (id: string, passwordInput?: string) => { success: boolean; message: string };
 
   // Payments Received
@@ -507,7 +510,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [scheduleItems, setScheduleItems] = useState<PaymentScheduleItem[]>(() =>
     loadLocalStorage('MF_SCHEDULES', [])
   );
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    const saved = loadLocalStorage<NotificationItem[] | null>('MF_NOTIFICATIONS', null);
+    if (saved !== null) return saved;
+    return INITIAL_NOTIFICATIONS;
+  });
+
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() =>
+    loadLocalStorage<string[]>('MF_DISMISSED_NOTIFICATIONS', [])
+  );
 
   // Sync state to LocalStorage for instant offline persistence & zero data loss on refresh
   useEffect(() => { saveLocalStorage('MF_PARTIES', parties); }, [parties]);
@@ -518,6 +529,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { saveLocalStorage('MF_SUPPLIER_PAYMENTS', supplierPayments); }, [supplierPayments]);
   useEffect(() => { saveLocalStorage('MF_EXPENSES', expenses); }, [expenses]);
   useEffect(() => { saveLocalStorage('MF_SCHEDULES', scheduleItems); }, [scheduleItems]);
+  useEffect(() => { saveLocalStorage('MF_NOTIFICATIONS', notifications); }, [notifications]);
+  useEffect(() => { saveLocalStorage('MF_DISMISSED_NOTIFICATIONS', dismissedNotifIds); }, [dismissedNotifIds]);
 
   // -------------------------------------------------------------
   // Real-Time Multi-Device Synchronization Engine
@@ -671,13 +684,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleDarkMode = () => setDarkMode(prev => !prev);
 
-  // Notifications
+  // Notifications Management
   const markNotificationRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
+  const deleteNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    setDismissedNotifIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
   const clearAllNotifications = () => {
+    const allIds = notifications.map(n => n.id);
     setNotifications([]);
+    setDismissedNotifIds(prev => [...new Set([...prev, ...allIds])]);
   };
 
   // Parties - returns newly created party
@@ -877,48 +897,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   /**
-   * Safe Soft Delete Sales Bill
-   * Requires password verification (demo: 'admin', '1234', 'masala123', 'admin123')
-   * NOTE: In production, password verification must be authenticated by a trusted server/backend.
+   * Safe Soft Delete Sales Bill & Cascade Void Linked Payment Receipts
+   * Marks sales bill deleted and voids/soft-deletes all linked payment receipts,
+   * preserving full accounting audit history in Recently Deleted.
    */
-  const softDeleteSalesBill = (id: string, _passwordInput?: string): { success: boolean; message: string } => {
+  const softDeleteSalesBill = (id: string, cascadeLinkedReceipts: boolean = true): { success: boolean; message: string; deletedPaymentCount?: number } => {
     const bill = salesBills.find(b => b.id === id);
     if (!bill) {
       return { success: false, message: 'Bill record not found.' };
     }
 
-    // Guard financial integrity: block deletion if payments have been received or allocated
-    const linkedPayments = paymentsReceived.filter(p => p.allocatedBillIds.includes(bill.id));
-    if (linkedPayments.length > 0 || bill.receivedAmount > 0) {
-      return {
-        success: false,
-        message: `Deletion Blocked: Sales Bill ${bill.billNumber} has ${linkedPayments.length} linked payment receipt(s) with Rs. ${bill.receivedAmount.toLocaleString('en-PK')} received. To preserve financial audit integrity, delete or reallocate payments before deleting this bill.`
-      };
-    }
+    const now = new Date().toISOString();
 
     // Mark soft deleted
     const deletedBill = {
       ...bill,
       isDeleted: true,
-      deletedAt: new Date().toISOString(),
+      deletedAt: now,
       deletedBy: 'Factory Admin'
     };
     setSalesBills(prev => prev.map(b => b.id === id ? deletedBill : b));
+
+    // Find linked active payment receipts
+    const linkedPayments = paymentsReceived.filter(p =>
+      !p.isDeleted && (
+        p.allocatedBillIds.includes(bill.id) ||
+        p.allocations?.some(a => a.billId === bill.id || a.billNumber === bill.billNumber) ||
+        p.receiptNumber === `REC-INIT-${bill.billNumber}`
+      )
+    );
+
+    // Cascade delete linked payment receipts if requested
+    if (cascadeLinkedReceipts && linkedPayments.length > 0) {
+      const linkedIds = new Set(linkedPayments.map(p => p.id));
+      setPaymentsReceived(prev => prev.map(p => {
+        if (!linkedIds.has(p.id)) return p;
+        return {
+          ...p,
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy: 'Factory Admin'
+        };
+      }));
+    }
+
     if (isDatabaseConnected()) {
-      saveSalesBillToSupabase(deletedBill);
+      softDeleteSalesBillCascadeToDatabase(id);
     }
     notifyBroadcastSync();
 
     return {
       success: true,
-      message: `Sales Bill ${bill.billNumber} soft-deleted. Moved to Recently Deleted.`
+      message: linkedPayments.length > 0
+        ? `Sales Bill ${bill.billNumber} and ${linkedPayments.length} linked receipt(s) moved to Recently Deleted.`
+        : `Sales Bill ${bill.billNumber} soft-deleted. Moved to Recently Deleted.`,
+      deletedPaymentCount: linkedPayments.length
     };
   };
 
   /**
-   * Restore Soft-Deleted Sales Bill
+   * Restore Soft-Deleted Sales Bill & Linked Receipts
    */
-  const restoreSalesBill = (id: string, _passwordInput?: string): { success: boolean; message: string } => {
+  const restoreSalesBill = (id: string, restoreLinkedReceipts: boolean = true): { success: boolean; message: string } => {
     const bill = salesBills.find(b => b.id === id);
     if (!bill) {
       return { success: false, message: 'Bill record not found.' };
@@ -940,15 +980,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
+    if (restoreLinkedReceipts) {
+      setPaymentsReceived(prev => prev.map(p => {
+        const isLinked = p.allocatedBillIds.includes(bill.id) ||
+          p.allocations?.some(a => a.billId === bill.id || a.billNumber === bill.billNumber) ||
+          p.receiptNumber === `REC-INIT-${bill.billNumber}`;
+        if (!isLinked) return p;
+        return {
+          ...p,
+          isDeleted: false,
+          deletedAt: undefined,
+          deletedBy: undefined
+        };
+      }));
+    }
+
     if (isDatabaseConnected()) {
-      saveSalesBillToSupabase({
-        ...bill,
-        remainingAmount,
-        status,
-        isDeleted: false,
-        deletedAt: undefined,
-        deletedBy: undefined
-      });
+      restoreSalesBillCascadeToDatabase(id);
     }
     notifyBroadcastSync();
 
@@ -1886,6 +1934,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       notifications,
       markNotificationRead,
+      deleteNotification,
       clearAllNotifications,
 
       parties,

@@ -53,6 +53,10 @@ export const Factories: React.FC = () => {
     city: '',
     address: '',
     phone: '',
+    phone2: '',
+    ownerName: '',
+    licenceNumber: '',
+    licenceCategory: '',
     email: '',
     status: 'Active' as FactoryStatus,
     notes: '',
@@ -154,6 +158,10 @@ export const Factories: React.FC = () => {
       city: 'Multan',
       address: '',
       phone: '',
+      phone2: '',
+      ownerName: '',
+      licenceNumber: '',
+      licenceCategory: '',
       email: '',
       status: 'Active',
       notes: '',
@@ -172,6 +180,10 @@ export const Factories: React.FC = () => {
       city: factory.city,
       address: factory.address,
       phone: factory.phone,
+      phone2: factory.phone2 || '',
+      ownerName: factory.ownerName || '',
+      licenceNumber: factory.licenceNumber || '',
+      licenceCategory: factory.licenceCategory || '',
       email: factory.email || '',
       status: factory.status,
       notes: factory.notes || '',
@@ -213,6 +225,10 @@ export const Factories: React.FC = () => {
         city: formData.city.trim(),
         address: formData.address.trim(),
         phone: formData.phone.trim(),
+        phone2: formData.phone2.trim() || undefined,
+        ownerName: formData.ownerName.trim() || undefined,
+        licenceNumber: formData.licenceNumber.trim() || undefined,
+        licenceCategory: formData.licenceCategory.trim() || undefined,
         email: formData.email.trim() || undefined,
         status: formData.status,
         notes: formData.notes.trim() || undefined,
@@ -258,6 +274,10 @@ export const Factories: React.FC = () => {
         city: formData.city.trim(),
         address: formData.address.trim(),
         phone: formData.phone.trim(),
+        phone2: formData.phone2.trim() || undefined,
+        ownerName: formData.ownerName.trim() || undefined,
+        licenceNumber: formData.licenceNumber.trim() || undefined,
+        licenceCategory: formData.licenceCategory.trim() || undefined,
         email: formData.email.trim() || undefined,
         status: formData.status,
         notes: formData.notes.trim() || undefined,
@@ -466,11 +486,25 @@ export const Factories: React.FC = () => {
                   </p>
                 </div>
 
+                {/* Owner & Licence snippet */}
+                {(factory.ownerName || factory.licenceNumber) && (
+                  <div className="mt-2.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                      Owner: {factory.ownerName || 'N/A'}
+                    </span>
+                    {factory.licenceNumber && (
+                      <span className="font-mono text-emerald-700 dark:text-emerald-400 font-bold shrink-0">
+                        Lic: {factory.licenceNumber}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Contact info snippet */}
                 <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
                     <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{factory.phone}</span>
+                    <span className="truncate">{factory.phone}{factory.phone2 ? ` / ${factory.phone2}` : ''}</span>
                   </div>
                   {factory.email ? (
                     <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -478,7 +512,9 @@ export const Factories: React.FC = () => {
                       <span className="truncate">{factory.email}</span>
                     </div>
                   ) : (
-                    <div className="text-slate-400 italic text-[11px]">No email specified</div>
+                    <div className="text-slate-400 italic text-[11px] truncate">
+                      {factory.licenceCategory || 'Food Manufacturing'}
+                    </div>
                   )}
                 </div>
 
@@ -654,14 +690,13 @@ export const Factories: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Contact Phone <span className="text-rose-500">*</span>
+                    Owner Name
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="+92 61 1234567"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="e.g. Haji Muhammad Awais"
+                    value={formData.ownerName}
+                    onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -675,6 +710,63 @@ export const Factories: React.FC = () => {
                     placeholder="factory@masala.pk"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Phone 1 (Primary) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="+92 61 1234567"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Phone 2 (Secondary / Mobile)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="+92 300 1234567"
+                    value={formData.phone2}
+                    onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Licence Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PFA-88210 / MFG-102"
+                    value={formData.licenceNumber}
+                    onChange={(e) => setFormData({ ...formData, licenceNumber: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Licence Category
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Food Safety Authority / Industrial"
+                    value={formData.licenceCategory}
+                    onChange={(e) => setFormData({ ...formData, licenceCategory: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -828,13 +920,13 @@ export const Factories: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Contact Phone <span className="text-rose-500">*</span>
+                    Owner Name
                   </label>
                   <input
                     type="text"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="e.g. Haji Muhammad Awais"
+                    value={formData.ownerName}
+                    onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -847,6 +939,62 @@ export const Factories: React.FC = () => {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Phone 1 (Primary) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Phone 2 (Secondary / Mobile)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="+92 300 1234567"
+                    value={formData.phone2}
+                    onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Licence Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PFA-88210 / MFG-102"
+                    value={formData.licenceNumber}
+                    onChange={(e) => setFormData({ ...formData, licenceNumber: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Licence Category
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Food Safety Authority / Industrial"
+                    value={formData.licenceCategory}
+                    onChange={(e) => setFormData({ ...formData, licenceCategory: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -958,12 +1106,28 @@ export const Factories: React.FC = () => {
             {/* Profile Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800">
               <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Owner Name</span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium mt-0.5 block">{viewingFactory.ownerName || 'None recorded'}</span>
+              </div>
+              <div>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Physical Address</span>
                 <span className="text-slate-800 dark:text-slate-200 font-medium mt-0.5 block">{viewingFactory.address}</span>
               </div>
               <div>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Contact Phone</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Phone 1 (Primary)</span>
                 <span className="text-slate-800 dark:text-slate-200 font-medium mt-0.5 block">{viewingFactory.phone}</span>
+              </div>
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Phone 2 (Secondary)</span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium mt-0.5 block">{viewingFactory.phone2 || 'None recorded'}</span>
+              </div>
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Licence Number</span>
+                <span className="text-slate-800 dark:text-slate-200 font-mono font-medium mt-0.5 block">{viewingFactory.licenceNumber || 'None recorded'}</span>
+              </div>
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Licence Category</span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium mt-0.5 block">{viewingFactory.licenceCategory || 'General Food Facility'}</span>
               </div>
               <div>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Email Address</span>

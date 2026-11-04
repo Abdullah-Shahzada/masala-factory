@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { SalesBill, BillItem, BranchId, PaymentStatus } from '../types';
+import { SalesBill, BillItem, BranchId, PaymentStatus, PaymentReceived } from '../types';
 import { formatPKR, formatDate } from '../utils/formatters';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Modal } from '../components/common/Modal';
@@ -23,6 +23,7 @@ import {
   Eye, 
   FileText,
   AlertCircle,
+  AlertTriangle,
   Building2,
   Phone,
   Image as ImageIcon,
@@ -52,6 +53,7 @@ export const SalesBills: React.FC = () => {
     updateSalesBill,
     softDeleteSalesBill,
     restoreSalesBill,
+    paymentsReceived,
     parties, 
     products, 
     branches, 
@@ -97,6 +99,19 @@ export const SalesBills: React.FC = () => {
     bill: SalesBill | null;
     action: 'delete' | 'restore';
   }>({ isOpen: false, bill: null, action: 'delete' });
+
+  // Dedicated Bill & Linked Receipts Cascade Deletion Modal
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    isOpen: boolean;
+    bill: SalesBill | null;
+    linkedPayments: PaymentReceived[];
+    totalLinkedAmount: number;
+  }>({
+    isOpen: false,
+    bill: null,
+    linkedPayments: [],
+    totalLinkedAmount: 0
+  });
 
   // Notification / Alert Banner Feedback
   const [actionFeedback, setActionFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
@@ -375,23 +390,48 @@ export const SalesBills: React.FC = () => {
     ]);
   };
 
-  // Safe Deletion Handlers
+  // Safe Deletion Handlers with Cascade Void & Deletion for Linked Receipts
   const handleInitiateDelete = (bill: SalesBill) => {
     setActionFeedback(null);
-    // Financial integrity guard: if bill has payments received, block deletion
-    if (bill.receivedAmount > 0) {
-      setActionFeedback({
-        type: 'error',
-        message: `Deletion Blocked: Sales Bill ${bill.billNumber} has recorded payments of ${formatPKR(bill.receivedAmount)}. To protect financial and audit integrity, bills with recorded payments cannot be deleted.`
-      });
-      return;
-    }
 
-    setPasswordModal({
+    // Find linked payments
+    const linked = paymentsReceived.filter(p =>
+      !p.isDeleted && (
+        p.allocatedBillIds?.includes(bill.id) ||
+        p.allocations?.some(a => a.billId === bill.id || a.billNumber === bill.billNumber) ||
+        p.receiptNumber === `REC-INIT-${bill.billNumber}`
+      )
+    );
+
+    const totalLinked = linked.reduce((sum, p) => {
+      const alloc = p.allocations?.find(a => a.billId === bill.id || a.billNumber === bill.billNumber);
+      return sum + (alloc ? alloc.amount : p.amountReceived);
+    }, 0);
+
+    const effectiveLinkedAmount = totalLinked > 0 ? totalLinked : (bill.receivedAmount || 0);
+
+    setDeleteConfirmation({
       isOpen: true,
       bill,
-      action: 'delete'
+      linkedPayments: linked,
+      totalLinkedAmount: effectiveLinkedAmount
     });
+  };
+
+  const handleConfirmDeleteCascade = () => {
+    if (!deleteConfirmation.bill) return;
+    const bill = deleteConfirmation.bill;
+
+    const res = softDeleteSalesBill(bill.id, true);
+    if (res.success) {
+      setActionFeedback({ type: 'success', message: res.message });
+      setDeleteConfirmation({ isOpen: false, bill: null, linkedPayments: [], totalLinkedAmount: 0 });
+      if (selectedBillForDetails?.id === bill.id) {
+        setSelectedBillForDetails(null);
+      }
+    } else {
+      setActionFeedback({ type: 'error', message: res.message });
+    }
   };
 
   const handleInitiateRestore = (bill: SalesBill) => {
@@ -406,19 +446,8 @@ export const SalesBills: React.FC = () => {
   const handleConfirmAction = () => {
     if (!passwordModal.bill) return;
 
-    if (passwordModal.action === 'delete') {
-      const res = softDeleteSalesBill(passwordModal.bill.id);
-      if (res.success) {
-        setActionFeedback({ type: 'success', message: res.message });
-        setPasswordModal({ isOpen: false, bill: null, action: 'delete' });
-        if (selectedBillForDetails?.id === passwordModal.bill.id) {
-          setSelectedBillForDetails(null);
-        }
-      } else {
-        setActionFeedback({ type: 'error', message: res.message });
-      }
-    } else {
-      const res = restoreSalesBill(passwordModal.bill.id);
+    if (passwordModal.action === 'restore') {
+      const res = restoreSalesBill(passwordModal.bill.id, true);
       if (res.success) {
         setActionFeedback({ type: 'success', message: res.message });
         setPasswordModal({ isOpen: false, bill: null, action: 'restore' });
@@ -1518,6 +1547,130 @@ export const SalesBills: React.FC = () => {
         }
         confirmText={passwordModal.action === 'delete' ? 'Delete' : 'Restore'}
       />
+
+      {/* CASCADE BILL & LINKED RECEIPTS DELETION CONFIRMATION MODAL */}
+      <Modal
+        isOpen={deleteConfirmation.isOpen}
+        onClose={() => setDeleteConfirmation({ isOpen: false, bill: null, linkedPayments: [], totalLinkedAmount: 0 })}
+        title={
+          deleteConfirmation.linkedPayments.length > 0 || deleteConfirmation.totalLinkedAmount > 0
+            ? "Delete Sales Bill & Linked Receipts"
+            : "Delete Sales Bill"
+        }
+        maxWidth="lg"
+      >
+        {deleteConfirmation.bill && (
+          <div className="space-y-4 text-xs">
+            {/* Bill Summary Card */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sales Bill</p>
+                <p className="text-base font-bold text-slate-900 dark:text-white font-mono mt-0.5">
+                  {deleteConfirmation.bill.billNumber}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                  Customer: <span className="font-semibold text-slate-800 dark:text-slate-100">{deleteConfirmation.bill.partyName}</span>
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Branch: <span className="font-medium text-slate-700 dark:text-slate-200">{deleteConfirmation.bill.branchName || 'Main Factory'}</span> • Date: {deleteConfirmation.bill.billDate}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Grand Total</p>
+                <p className="text-base font-extrabold text-amber-600 dark:text-amber-400 font-mono mt-0.5">
+                  {formatPKR(deleteConfirmation.bill.grandTotal)}
+                </p>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold mt-1.5 ${
+                  deleteConfirmation.bill.status === 'Paid'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : deleteConfirmation.bill.status === 'Partially Paid'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400'
+                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400'
+                }`}>
+                  {deleteConfirmation.bill.status}
+                </span>
+              </div>
+            </div>
+
+            {/* If linked payments exist */}
+            {deleteConfirmation.linkedPayments.length > 0 || deleteConfirmation.totalLinkedAmount > 0 ? (
+              <div className="space-y-3">
+                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl flex items-start gap-3 text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-xs leading-snug">
+                      Linked Receipts Detected ({deleteConfirmation.linkedPayments.length > 0 ? deleteConfirmation.linkedPayments.length : '1'} Receipt(s) totaling {formatPKR(deleteConfirmation.totalLinkedAmount)})
+                    </p>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                      This bill has linked payments. Deleting this sales bill will automatically <strong>void and move all linked payment receipts to Recently Deleted</strong>, and reverse related ledger balances and dashboard figures while preserving the accounting audit trail.
+                    </p>
+                  </div>
+                </div>
+
+                {deleteConfirmation.linkedPayments.length > 0 && (
+                  <div className="border border-slate-200 dark:border-slate-700/60 rounded-xl overflow-hidden">
+                    <div className="bg-slate-100 dark:bg-slate-800 px-3 py-2 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex justify-between">
+                      <span>Linked Payment Receipts</span>
+                      <span>Amount</span>
+                    </div>
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-36 overflow-y-auto">
+                      {deleteConfirmation.linkedPayments.map(p => (
+                        <div key={p.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <div>
+                            <div className="font-mono font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                              <span>{p.receiptNumber}</span>
+                              <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                {p.paymentMethod}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-0.5">{p.paymentDate} • Ref: {p.referenceNo || 'N/A'}</p>
+                          </div>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {formatPKR(p.amountReceived)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl flex items-start gap-3 text-rose-900 dark:text-rose-200">
+                <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-xs leading-snug">
+                    Are you sure you want to delete this sales bill?
+                  </p>
+                  <p className="text-[11px] text-rose-800 dark:text-rose-300">
+                    The bill will be moved to Recently Deleted. Customer balance and sales statistics will be adjusted. You can restore it anytime.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmation({ isOpen: false, bill: null, linkedPayments: [], totalLinkedAmount: 0 })}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteCascade}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleteConfirmation.linkedPayments.length > 0 || deleteConfirmation.totalLinkedAmount > 0
+                  ? `Delete Bill & Void Receipts`
+                  : 'Delete Bill'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </div>
   );

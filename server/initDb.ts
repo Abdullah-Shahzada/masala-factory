@@ -24,6 +24,12 @@ export const initializeDatabase = async () => {
       }
       console.log('[MySQL] All database tables verified / created successfully.');
 
+      // Safely ensure new columns exist in factories
+      try { await conn.query('ALTER TABLE factories ADD COLUMN phone2 VARCHAR(50) NULL'); } catch {}
+      try { await conn.query('ALTER TABLE factories ADD COLUMN owner_name VARCHAR(255) NULL'); } catch {}
+      try { await conn.query('ALTER TABLE factories ADD COLUMN licence_number VARCHAR(100) NULL'); } catch {}
+      try { await conn.query('ALTER TABLE factories ADD COLUMN licence_category VARCHAR(100) NULL'); } catch {}
+
       // Check if factories exist
       const [factories]: any = await conn.query('SELECT COUNT(*) as count FROM factories');
       if (factories[0].count === 0) {

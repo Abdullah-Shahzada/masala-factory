@@ -194,6 +194,10 @@ app.get('/api/factories', async (_req, res) => {
       city: f.city,
       address: f.address,
       phone: f.phone,
+      phone2: f.phone2 || undefined,
+      ownerName: f.owner_name || undefined,
+      licenceNumber: f.licence_number || undefined,
+      licenceCategory: f.licence_category || undefined,
       email: f.email || undefined,
       status: f.status,
       isMain: Boolean(f.is_main),
@@ -211,13 +215,15 @@ app.post('/api/factories', async (req, res) => {
     const f = req.body;
     const id = f.id && f.id.length === 36 ? f.id : generateId();
     await pool.query(
-      `INSERT INTO factories (id, code, name, city, address, phone, email, status, is_main, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO factories (id, code, name, city, address, phone, phone2, owner_name, licence_number, licence_category, email, status, is_main, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
        name = VALUES(name), city = VALUES(city), address = VALUES(address),
-       phone = VALUES(phone), email = VALUES(email), status = VALUES(status),
+       phone = VALUES(phone), phone2 = VALUES(phone2), owner_name = VALUES(owner_name),
+       licence_number = VALUES(licence_number), licence_category = VALUES(licence_category),
+       email = VALUES(email), status = VALUES(status),
        is_main = VALUES(is_main), notes = VALUES(notes)`,
-      [id, f.code, f.name, f.city, f.address, f.phone, f.email || null, f.status || 'Active', f.isMain ? 1 : 0, f.notes || null]
+      [id, f.code, f.name, f.city, f.address, f.phone, f.phone2 || null, f.ownerName || null, f.licenceNumber || null, f.licenceCategory || null, f.email || null, f.status || 'Active', f.isMain ? 1 : 0, f.notes || null]
     );
     res.json({ success: true, id });
   } catch (err: any) {
@@ -390,7 +396,12 @@ app.delete('/api/products/:id', async (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/sales-bills', async (_req, res) => {
   try {
-    const [bills]: any = await pool.query('SELECT * FROM sales_bills ORDER BY bill_date DESC, created_at DESC');
+    const [bills]: any = await pool.query(`
+      SELECT b.*, f.name AS branch_name 
+      FROM sales_bills b 
+      LEFT JOIN factories f ON b.factory_id = f.id 
+      ORDER BY b.bill_date DESC, b.created_at DESC
+    `);
     const [items]: any = await pool.query('SELECT * FROM sales_bill_items');
 
     const itemsMap: Record<string, any[]> = {};
@@ -416,7 +427,7 @@ app.get('/api/sales-bills', async (_req, res) => {
       billDate: b.bill_date instanceof Date ? b.bill_date.toISOString().split('T')[0] : b.bill_date,
       billTime: b.bill_time || undefined,
       branchId: b.factory_id,
-      branchName: b.party_name || 'Plant 1',
+      branchName: b.branch_name || 'Main Factory',
       items: itemsMap[b.id] || [],
       grandTotal: Number(b.grand_total),
       receivedAmount: Number(b.received_amount) || 0,
@@ -472,6 +483,90 @@ app.post('/api/sales-bills', async (req, res) => {
 
     await conn.commit();
     res.json({ success: true, id });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/sales-bills/:id/soft-delete', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+    const now = new Date();
+
+    // 1. Mark sales bill soft-deleted
+    await conn.query(
+      'UPDATE sales_bills SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?',
+      [now, 'Factory Admin', id]
+    );
+
+    // 2. Find linked payment allocations
+    const [allocs]: any = await conn.query('SELECT payment_id FROM payment_allocations WHERE bill_id = ?', [id]);
+    const paymentIds = [...new Set(allocs.map((a: any) => a.payment_id))];
+
+    // 3. Mark linked payment receipts soft-deleted
+    for (const pid of paymentIds) {
+      await conn.query(
+        'UPDATE payments_received SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?',
+        [now, 'Factory Admin', pid]
+      );
+    }
+
+    // 4. Also mark initial payment receipt if exists
+    const [bRow]: any = await conn.query('SELECT bill_number FROM sales_bills WHERE id = ?', [id]);
+    if (bRow.length > 0) {
+      await conn.query(
+        'UPDATE payments_received SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE receipt_number = ?',
+        [now, 'Factory Admin', `REC-INIT-${bRow[0].bill_number}`]
+      );
+    }
+
+    await conn.commit();
+    res.json({ success: true, voidedPaymentCount: paymentIds.length });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/sales-bills/:id/restore', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const { id } = req.params;
+
+    // Restore bill
+    await conn.query(
+      'UPDATE sales_bills SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?',
+      [id]
+    );
+
+    // Restore linked payment receipts
+    const [allocs]: any = await conn.query('SELECT payment_id FROM payment_allocations WHERE bill_id = ?', [id]);
+    const paymentIds = [...new Set(allocs.map((a: any) => a.payment_id))];
+    for (const pid of paymentIds) {
+      await conn.query(
+        'UPDATE payments_received SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?',
+        [pid]
+      );
+    }
+
+    const [bRow]: any = await conn.query('SELECT bill_number FROM sales_bills WHERE id = ?', [id]);
+    if (bRow.length > 0) {
+      await conn.query(
+        'UPDATE payments_received SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE receipt_number = ?',
+        [`REC-INIT-${bRow[0].bill_number}`]
+      );
+    }
+
+    await conn.commit();
+    res.json({ success: true });
   } catch (err: any) {
     await conn.rollback();
     res.status(500).json({ error: err.message });

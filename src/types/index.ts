@@ -6,7 +6,11 @@ export interface Factory {
   code: string; // Unique factory code (e.g. 'MLT-01', 'LHR-02')
   city: string; // City location (e.g. 'Multan', 'Lahore', 'Karachi')
   address: string; // Street address / Industrial plot
-  phone: string; // Contact phone number
+  phone: string; // Contact phone number (Phone 1)
+  phone2?: string; // Secondary contact phone number (Phone 2)
+  ownerName?: string; // Factory / Branch owner name
+  licenceNumber?: string; // Commercial / Food safety license number
+  licenceCategory?: string; // License category (e.g. Food Safety Authority, Industrial, Commercial)
   email?: string; // Optional email address
   status: FactoryStatus; // 'Active' or 'Inactive' (permanent business records)
   isMain?: boolean; // Primary factory indicator

@@ -1321,6 +1321,20 @@ export const restoreRecordInSupabase = async (
   }
 };
 
+export const softDeleteSalesBillCascadeToDatabase = async (id: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.softDeleteSalesBillCascadeMySQL(id);
+  }
+  return true;
+};
+
+export const restoreSalesBillCascadeToDatabase = async (id: string): Promise<boolean> => {
+  if (isUsingMySQL()) {
+    return mysqlService.restoreSalesBillCascadeMySQL(id);
+  }
+  return true;
+};
+
 /* =========================================================================
    12. PERMANENT DELETE RECORD FROM DATABASE
    ========================================================================= */
