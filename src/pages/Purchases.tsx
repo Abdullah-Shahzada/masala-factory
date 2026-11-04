@@ -361,7 +361,7 @@ export const Purchases: React.FC = () => {
 
   const handleDeleteConfirm = () => {
     if (!deleteModal.purchase) return;
-    const res = softDeletePurchase(deleteModal.purchase.id);
+    const res = softDeletePurchase(deleteModal.purchase.id, true);
     if (res.success) {
       setActionFeedback({ type: 'success', message: res.message });
     } else {
@@ -2375,8 +2375,16 @@ export const Purchases: React.FC = () => {
         onConfirm={handleDeleteConfirm}
         type="delete"
         title="Delete Purchase Bill"
-        message="Are you sure you want to delete this record?"
-        confirmText="Delete"
+        message={
+          deleteModal.purchase ? (() => {
+            const linked = supplierPayments.filter(sp => !sp.isDeleted && (sp.purchaseBillId === deleteModal.purchase!.id || sp.purchaseBillNumber === deleteModal.purchase!.billNumber || sp.receiptNumber === `SP-INIT-${deleteModal.purchase!.billNumber}`));
+            if (linked.length > 0) {
+              return `This purchase bill has ${linked.length} linked supplier payment voucher(s) totaling ${formatPKR(deleteModal.purchase.amountPaid)}. Deleting this bill will also move all linked payment vouchers to Recently Deleted. Do you want to proceed?`;
+            }
+            return `Are you sure you want to delete purchase bill ${deleteModal.purchase.billNumber}? It will be moved to Recently Deleted.`;
+          })() : "Are you sure you want to delete this record?"
+        }
+        confirmText="Delete Purchase Bill"
       />
 
     </div>

@@ -127,7 +127,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+            
+            const computeIsActive = () => {
+              if (item.path.includes('?')) {
+                const [path, query] = item.path.split('?');
+                return location.pathname === path && location.search === `?${query}`;
+              }
+              if (item.path === '/purchases') {
+                return location.pathname === '/purchases' && !location.search.includes('tab=payments');
+              }
+              if (item.path === '/') {
+                return location.pathname === '/';
+              }
+              return location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(`${item.path}/`));
+            };
+
+            const isActive = computeIsActive();
 
             if (item.isSubmenu) {
               return (
@@ -186,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileOpen(false)}
-                className={({ isActive }) => `
+                className={() => `
                   flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group
                   ${isActive 
                     ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-md shadow-emerald-950/50' 

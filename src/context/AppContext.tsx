@@ -142,8 +142,8 @@ interface AppContextType {
   supplierPayments: SupplierPayment[];
   addPurchase: (purchase: Omit<PurchaseBill, 'id' | 'createdAt' | 'outstandingAmount' | 'status'>) => PurchaseBill;
   updatePurchase: (id: string, updates: Partial<PurchaseBill>) => { success: boolean; message: string };
-  softDeletePurchase: (id: string, passwordInput?: string) => { success: boolean; message: string };
-  restorePurchase: (id: string, passwordInput?: string) => { success: boolean; message: string };
+  softDeletePurchase: (id: string, cascadeLinkedPayments?: boolean) => { success: boolean; message: string; deletedPaymentCount?: number };
+  restorePurchase: (id: string, restoreLinkedPayments?: boolean) => { success: boolean; message: string };
   permanentDeletePurchase: (id: string, passwordInput?: string) => { success: boolean; message: string };
   recordSupplierPayment: (payment: {
     purchaseId: string;
@@ -1778,12 +1778,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: `Supplier Purchase ${purchase.billNumber} updated successfully.` };
   };
 
-  const softDeletePurchase = (id: string, _passwordInput?: string): { success: boolean; message: string } => {
+  const softDeletePurchase = (id: string, cascadeLinkedPayments: boolean = true): { success: boolean; message: string; deletedPaymentCount?: number } => {
     const purchase = purchases.find(pb => pb.id === id);
     if (!purchase) return { success: false, message: 'Purchase bill record not found.' };
 
-    const linkedPayments = supplierPayments.filter(sp => sp.purchaseBillId === purchase.id && !sp.isDeleted);
-    if (linkedPayments.length > 0 || purchase.amountPaid > 0) {
+    const linkedPayments = supplierPayments.filter(sp =>
+      !sp.isDeleted && (
+        sp.purchaseBillId === purchase.id ||
+        sp.purchaseBillNumber === purchase.billNumber ||
+        sp.receiptNumber === `SP-INIT-${purchase.billNumber}`
+      )
+    );
+
+    // If cascadeLinkedPayments is true, cascade delete all linked supplier payments
+    if (cascadeLinkedPayments && linkedPayments.length > 0) {
+      const linkedIds = new Set(linkedPayments.map(p => p.id));
+      setSupplierPayments(prev => prev.map(sp => {
+        if (!linkedIds.has(sp.id)) return sp;
+        return {
+          ...sp,
+          isDeleted: true,
+          deletedAt: new Date().toISOString(),
+          deletedBy: 'Factory Admin'
+        };
+      }));
+
+      if (isDatabaseConnected()) {
+        linkedPayments.forEach(sp => {
+          softDeleteRecordInSupabase('supplier_payments', sp.id);
+        });
+      }
+    } else if (!cascadeLinkedPayments && (linkedPayments.length > 0 || purchase.amountPaid > 0)) {
       return {
         success: false,
         message: `Deletion Blocked: Purchase bill ${purchase.billNumber} has ${linkedPayments.length} linked supplier payment(s) (Rs. ${purchase.amountPaid.toLocaleString('en-PK')}). To preserve audit integrity, delete payments first.`
@@ -1802,14 +1827,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDatabaseConnected()) {
       savePurchaseToSupabase(deletedPurchase);
     }
+    notifyBroadcastSync();
 
     return {
       success: true,
-      message: `Supplier Purchase ${purchase.billNumber} soft-deleted. Moved to Recently Deleted.`
+      message: linkedPayments.length > 0
+        ? `Supplier Purchase ${purchase.billNumber} and ${linkedPayments.length} linked payment voucher(s) moved to Recently Deleted.`
+        : `Supplier Purchase ${purchase.billNumber} soft-deleted. Moved to Recently Deleted.`,
+      deletedPaymentCount: linkedPayments.length
     };
   };
 
-  const restorePurchase = (id: string, _passwordInput?: string): { success: boolean; message: string } => {
+  const restorePurchase = (id: string, restoreLinkedPayments: boolean = true): { success: boolean; message: string } => {
     const purchase = purchases.find(pb => pb.id === id);
     if (!purchase) return { success: false, message: 'Purchase record not found.' };
 
@@ -1823,6 +1852,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
+    if (restoreLinkedPayments) {
+      setSupplierPayments(prev => prev.map(sp => {
+        if (sp.purchaseBillId === purchase.id || sp.purchaseBillNumber === purchase.billNumber || sp.receiptNumber === `SP-INIT-${purchase.billNumber}`) {
+          return {
+            ...sp,
+            isDeleted: false,
+            deletedAt: undefined,
+            deletedBy: undefined
+          };
+        }
+        return sp;
+      }));
+
+      if (isDatabaseConnected()) {
+        const linkedPayments = supplierPayments.filter(sp =>
+          sp.purchaseBillId === purchase.id || sp.purchaseBillNumber === purchase.billNumber || sp.receiptNumber === `SP-INIT-${purchase.billNumber}`
+        );
+        linkedPayments.forEach(sp => {
+          restoreRecordInSupabase('supplier_payments', sp.id);
+        });
+      }
+    }
+
     if (isDatabaseConnected()) {
       savePurchaseToSupabase({
         ...purchase,
@@ -1831,6 +1883,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedBy: undefined
       });
     }
+    notifyBroadcastSync();
 
     return {
       success: true,
