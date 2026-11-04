@@ -84,7 +84,7 @@ export const Login: React.FC = () => {
           <div className="mt-3 flex items-center justify-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700/60">
               <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-              2 Branches (Lahore & Karachi)
+              Multi-Plant Factory Network
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">
               <Database className="w-3.5 h-3.5" />

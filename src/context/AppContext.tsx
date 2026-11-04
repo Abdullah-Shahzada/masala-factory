@@ -168,7 +168,7 @@ interface AppContextType {
   businessName: string;
   setBusinessName: (name: string) => void;
   companyProfile: CompanyProfile;
-  updateCompanyProfile: (profile: Partial<CompanyProfile>) => void;
+  updateCompanyProfile: (profile: Partial<CompanyProfile>) => Promise<void> | void;
   refreshData: () => Promise<void>;
   isSyncing: boolean;
 }
@@ -187,9 +187,9 @@ export const verifyAdminPassword = (passwordInput: string): boolean => {
 export const loadStoredCompanyProfile = (): CompanyProfile => {
   const fallback: CompanyProfile = {
     name: 'Masala Manufacturing & B2B Supply Factory',
-    address: 'Plot 42-A, Industrial Estate, Kot Lakhpat',
-    city: 'Lahore',
-    phone: '+92 42 35891234',
+    address: 'Plot 42-A, Industrial Estate Phase II',
+    city: 'Multan',
+    phone: '+92 61 4567890',
     email: 'info@masalafactory.pk',
     taxNumber: 'NTN: 4419201-7 | STRN: 3277876123456'
   };
@@ -200,14 +200,21 @@ export const loadStoredCompanyProfile = (): CompanyProfile => {
 
   try {
     const raw = localStorage.getItem(SAVED_PROFILE_KEY);
+    const customName = localStorage.getItem('MF_BUSINESS_NAME');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         return {
           ...fallback,
-          ...parsed
+          ...parsed,
+          name: customName || parsed.name || fallback.name
         };
       }
+    } else if (customName) {
+      return {
+        ...fallback,
+        name: customName
+      };
     }
   } catch (err) {
     console.warn('Could not read company profile from localStorage', err);
@@ -323,7 +330,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedFactoryId, setSelectedFactoryId] = useState<string>('all');
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(loadStoredCompanyProfile);
-  const [businessName, setBusinessName] = useState<string>(() => companyProfile.name || 'Masala Manufacturing & B2B Supply Factory');
+  const [businessName, setBusinessName] = useState<string>(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = localStorage.getItem('MF_BUSINESS_NAME');
+      if (stored) return stored;
+    }
+    return companyProfile.name || 'Masala Manufacturing & B2B Supply Factory';
+  });
 
   const saveFactories = (newFactories: Factory[]) => {
     setFactories(newFactories);
@@ -464,24 +477,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateCompanyProfile = (profile: Partial<CompanyProfile>) => {
+  const updateCompanyProfile = async (profile: Partial<CompanyProfile>) => {
+    let finalProfile: CompanyProfile | null = null;
     setCompanyProfile(prev => {
-      const updated = { ...prev, ...profile };
-      if (profile.name) {
-        setBusinessName(profile.name);
-      }
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          localStorage.setItem(SAVED_PROFILE_KEY, JSON.stringify(updated));
-        }
-      } catch (err) {
-        console.warn('Could not save company profile to localStorage', err);
-      }
-      if (isDatabaseConnected()) {
-        saveCompanyProfileToSupabase(updated);
-      }
-      return updated;
+      const merged: CompanyProfile = {
+        ...prev,
+        ...profile,
+        name: profile.name !== undefined && profile.name.trim() !== '' ? profile.name.trim() : prev.name
+      };
+      finalProfile = merged;
+      return merged;
     });
+
+    const toSave: CompanyProfile = finalProfile || {
+      ...companyProfile,
+      ...profile,
+      name: profile.name !== undefined && profile.name.trim() !== '' ? profile.name.trim() : companyProfile.name
+    };
+
+    if (toSave.name) {
+      setBusinessName(toSave.name);
+    }
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(SAVED_PROFILE_KEY, JSON.stringify(toSave));
+        if (toSave.name) {
+          localStorage.setItem('MF_BUSINESS_NAME', toSave.name);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not save company profile to localStorage', err);
+    }
+
+    if (isDatabaseConnected()) {
+      try {
+        await saveCompanyProfileToSupabase(toSave);
+      } catch (err) {
+        console.warn('Could not save company profile to database', err);
+      }
+    }
   };
 
   // Start with localStorage or INITIAL_* mock data for instant zero-flicker rendering.
@@ -609,12 +644,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (dbPayments !== null) setPaymentsReceived(dbPayments);
       if (dbPurchases !== null) setPurchases(dbPurchases);
       if (dbExpenses !== null) setExpenses(dbExpenses);
-      if (dbProfile) {
-        setCompanyProfile(prev => ({
-          ...prev,
-          ...dbProfile,
-          logoUrl: dbProfile.logoUrl || prev.logoUrl
-        }));
+      if (dbProfile && dbProfile.name) {
+        setCompanyProfile(prev => {
+          const merged: CompanyProfile = {
+            ...prev,
+            ...dbProfile,
+            logoUrl: dbProfile.logoUrl || prev.logoUrl
+          };
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              localStorage.setItem(SAVED_PROFILE_KEY, JSON.stringify(merged));
+              if (merged.name) localStorage.setItem('MF_BUSINESS_NAME', merged.name);
+            }
+          } catch {}
+          return merged;
+        });
+        setBusinessName(dbProfile.name);
       }
       if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
       if (dbSchedules !== null) setScheduleItems(dbSchedules);

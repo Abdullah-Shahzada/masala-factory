@@ -45,6 +45,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     deleteNotification,
     clearAllNotifications,
     businessName,
+    companyProfile,
     refreshData,
     isSyncing
   } = useApp();
@@ -74,9 +75,15 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>
 
         <div className="flex items-center gap-1.5 lg:hidden">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-emerald-600 to-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
-            <Flame className="w-4 h-4 animate-pulse" />
-          </div>
+          {companyProfile?.logoUrl ? (
+            <div className="w-7 h-7 rounded-lg bg-white p-0.5 flex items-center justify-center shadow-xs shrink-0 overflow-hidden border border-slate-200 dark:border-slate-700">
+              <img src={companyProfile.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+            </div>
+          ) : (
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-emerald-600 to-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Flame className="w-4 h-4 animate-pulse" />
+            </div>
+          )}
           <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate max-w-[130px] sm:max-w-none">
             {businessName || 'Masala Factory'}
           </span>

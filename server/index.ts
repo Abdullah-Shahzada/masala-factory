@@ -236,7 +236,7 @@ app.post('/api/factories', async (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/company-profile', async (_req, res) => {
   try {
-    const [rows]: any = await pool.query('SELECT * FROM company_profiles LIMIT 1');
+    const [rows]: any = await pool.query('SELECT * FROM company_profiles ORDER BY updated_at DESC, created_at DESC LIMIT 1');
     if (rows.length === 0) return res.json(null);
     const p = rows[0];
     res.json({

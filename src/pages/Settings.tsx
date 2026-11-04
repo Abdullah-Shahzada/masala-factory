@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { formatPKR } from '../utils/formatters';
 import { Modal } from '../components/common/Modal';
@@ -26,7 +27,8 @@ import {
   CheckCircle2,
   Shield,
   Smartphone,
-  Download
+  Download,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -44,6 +46,7 @@ export const Settings: React.FC = () => {
   } = useApp();
 
   const { user, changePassword, isSupabaseMode } = useAuth();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'business' | 'security'>('business');
 
@@ -68,21 +71,25 @@ export const Settings: React.FC = () => {
     email: companyProfile.email || '',
     taxNumber: companyProfile.taxNumber || ''
   });
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSavingBusiness, setIsSavingBusiness] = useState(false);
   const [logoError, setLogoError] = useState('');
   const [bSaved, setBSaved] = useState(false);
 
-  // Sync profileData when companyProfile updates from context/storage
+  // Sync profileData when companyProfile updates from context/storage, but only if user hasn't edited locally
   React.useEffect(() => {
-    setProfileData({
-      name: companyProfile.name || businessName,
-      logoUrl: companyProfile.logoUrl || '',
-      address: companyProfile.address || '',
-      city: companyProfile.city || '',
-      phone: companyProfile.phone || '',
-      email: companyProfile.email || '',
-      taxNumber: companyProfile.taxNumber || ''
-    });
-  }, [companyProfile, businessName]);
+    if (!isDirty) {
+      setProfileData({
+        name: companyProfile.name || businessName,
+        logoUrl: companyProfile.logoUrl || '',
+        address: companyProfile.address || '',
+        city: companyProfile.city || '',
+        phone: companyProfile.phone || '',
+        email: companyProfile.email || '',
+        taxNumber: companyProfile.taxNumber || ''
+      });
+    }
+  }, [companyProfile, businessName, isDirty]);
 
   // New Branch Form
   const [branchModalOpen, setBranchModalOpen] = useState(false);
@@ -157,12 +164,20 @@ export const Settings: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSaveBusiness = (e: React.FormEvent) => {
+  const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateCompanyProfile(profileData);
-    setBusinessName(profileData.name);
-    setBSaved(true);
-    setTimeout(() => setBSaved(false), 2500);
+    if (!profileData.name.trim()) return;
+
+    setIsSavingBusiness(true);
+    try {
+      await updateCompanyProfile(profileData);
+      setBusinessName(profileData.name.trim());
+      setIsDirty(false);
+      setBSaved(true);
+      setTimeout(() => setBSaved(false), 3000);
+    } finally {
+      setIsSavingBusiness(false);
+    }
   };
 
   const handleAddBranch = (e: React.FormEvent) => {
@@ -278,13 +293,38 @@ export const Settings: React.FC = () => {
       {/* BUSINESS BRANDING TAB */}
       {activeTab === 'business' && (
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm max-w-2xl space-y-6">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Company Profile & Document Branding
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              These details and factory logo will appear on all generated PDF invoices, payment receipts, vouchers, and ledger statements.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Factory Business Name & Document Branding
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                This factory business name and official logo appear on all generated PDF invoices, payment receipts, vouchers, and ledger statements.
+              </p>
+            </div>
+          </div>
+
+          {/* Branch management redirect banner */}
+          <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <div>
+                <p className="font-bold text-xs text-slate-800 dark:text-slate-100">
+                  Individual Factory Branches & Plants
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Manage branch licenses, owner names, two phone numbers, and plant addresses on the Factories page.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/factories')}
+              className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-300 font-semibold rounded-lg text-xs shrink-0 flex items-center gap-1 shadow-xs transition"
+            >
+              <span>Manage Factories</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <form onSubmit={handleSaveBusiness} className="space-y-4 text-xs">
@@ -304,6 +344,7 @@ export const Settings: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
+                        setIsDirty(true);
                         setProfileData(prev => ({ ...prev, logoUrl: '' }));
                         updateCompanyProfile({ ...profileData, logoUrl: '' });
                       }}
@@ -348,8 +389,12 @@ export const Settings: React.FC = () => {
               <input
                 type="text"
                 value={profileData.name}
-                onChange={(e) => setProfileData(prev => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => {
+                  setIsDirty(true);
+                  setProfileData(prev => ({ ...prev, name: e.target.value }));
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold"
+                placeholder="e.g. Awais Masala Factory"
                 required
               />
             </div>
@@ -361,9 +406,12 @@ export const Settings: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Plot 42-A, Industrial Estate, Kot Lakhpat"
+                  placeholder="e.g. Plot 42-A, Industrial Estate Phase II"
                   value={profileData.address}
-                  onChange={(e) => setProfileData(prev => ({ ...prev, address: e.target.value }))}
+                  onChange={(e) => {
+                    setIsDirty(true);
+                    setProfileData(prev => ({ ...prev, address: e.target.value }));
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 />
               </div>
@@ -374,9 +422,12 @@ export const Settings: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Lahore"
+                  placeholder="e.g. Multan"
                   value={profileData.city}
-                  onChange={(e) => setProfileData(prev => ({ ...prev, city: e.target.value }))}
+                  onChange={(e) => {
+                    setIsDirty(true);
+                    setProfileData(prev => ({ ...prev, city: e.target.value }));
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 />
               </div>
@@ -389,9 +440,12 @@ export const Settings: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="+92 42 35891234"
+                  placeholder="+92 61 4567890"
                   value={profileData.phone}
-                  onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={(e) => {
+                    setIsDirty(true);
+                    setProfileData(prev => ({ ...prev, phone: e.target.value }));
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 />
               </div>
@@ -404,7 +458,10 @@ export const Settings: React.FC = () => {
                   type="email"
                   placeholder="info@masalafactory.pk"
                   value={profileData.email}
-                  onChange={(e) => setProfileData(prev => ({ ...prev, email: e.target.value }))}
+                  onChange={(e) => {
+                    setIsDirty(true);
+                    setProfileData(prev => ({ ...prev, email: e.target.value }));
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
                 />
               </div>
@@ -418,7 +475,10 @@ export const Settings: React.FC = () => {
                 type="text"
                 placeholder="NTN: 4419201-7 | STRN: 3277876123456"
                 value={profileData.taxNumber}
-                onChange={(e) => setProfileData(prev => ({ ...prev, taxNumber: e.target.value }))}
+                onChange={(e) => {
+                  setIsDirty(true);
+                  setProfileData(prev => ({ ...prev, taxNumber: e.target.value }));
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
               />
             </div>
@@ -426,10 +486,11 @@ export const Settings: React.FC = () => {
             <div className="pt-2 flex items-center gap-3">
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md flex items-center gap-2"
+                disabled={isSavingBusiness}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold rounded-xl shadow-md flex items-center gap-2 transition"
               >
                 {bSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                {bSaved ? 'Branding Saved!' : 'Save Business Details'}
+                {isSavingBusiness ? 'Saving Changes...' : bSaved ? 'Branding Saved!' : 'Save Business Details'}
               </button>
             </div>
           </form>

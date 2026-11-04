@@ -36,7 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setMobileOpen
 }) => {
   const location = useLocation();
-  const { scheduleItems, salesBills, totalRecentlyDeletedCount } = useApp();
+  const { scheduleItems, salesBills, totalRecentlyDeletedCount, companyProfile, businessName } = useApp();
   const [scheduleMenuOpen, setScheduleMenuOpen] = useState(location.pathname.startsWith('/schedule'));
 
   // Notification badge counts
@@ -93,13 +93,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="flex items-center justify-between h-16 px-4 border-b border-slate-800/80 bg-slate-950/50">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-amber-500 text-white shadow-lg shadow-emerald-900/40 shrink-0">
-              <Flame className="w-6 h-6 animate-pulse" />
-            </div>
+            {companyProfile?.logoUrl ? (
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white p-1 shadow-lg shadow-emerald-900/40 shrink-0 overflow-hidden">
+                <img src={companyProfile.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-amber-500 text-white shadow-lg shadow-emerald-900/40 shrink-0">
+                <Flame className="w-6 h-6 animate-pulse" />
+              </div>
+            )}
             {!collapsed && (
               <div className="flex flex-col truncate">
-                <span className="font-bold text-sm tracking-wide text-white font-sans">
-                  MASALA FACTORY
+                <span className="font-bold text-sm tracking-wide text-white font-sans truncate">
+                  {businessName ? businessName.toUpperCase() : 'MASALA FACTORY'}
                 </span>
                 <span className="text-[10px] text-emerald-400 font-medium tracking-wider uppercase">
                   B2B Management

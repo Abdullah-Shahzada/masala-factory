@@ -188,6 +188,14 @@ export const SalesBills: React.FC = () => {
     maxAmount > 0
   ].filter(Boolean).length;
 
+  // Helper to resolve accurate branch name
+  const getBranchDisplayName = (bId?: string, bName?: string) => {
+    if (bName && bName !== 'b1' && bName !== 'b2' && bName !== 'Plant 1') return bName;
+    const f = branches.find(b => b.id === bId || b.code === bId);
+    if (f) return f.name;
+    return bName || 'Main Factory';
+  };
+
   // Line item handlers
   const handleProductChange = (index: number, prodId: string) => {
     if (prodId === 'ADD_NEW_PRODUCT') {
@@ -859,7 +867,7 @@ export const SalesBills: React.FC = () => {
                       </span>
                     )}
                     <span className="text-[10px] text-slate-500 block mt-0.5">
-                      Branch: {bill.branchId === 'b1' ? 'Lahore' : 'Karachi'}
+                      Branch: {getBranchDisplayName(bill.branchId, bill.branchName)}
                     </span>
                   </div>
                   <div className="text-right shrink-0">
@@ -1007,7 +1015,7 @@ export const SalesBills: React.FC = () => {
                       {formatDate(bill.billDate)}
                     </td>
                     <td className="p-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {bill.branchId === 'b1' ? 'Lahore' : 'Karachi'}
+                      {getBranchDisplayName(bill.branchId, bill.branchName)}
                     </td>
                     <td className="p-2.5 max-w-[180px] truncate text-slate-600 dark:text-slate-300">
                       {bill.items.map(i => `${i.productName} (x${i.quantity})`).join(', ')}
@@ -1392,6 +1400,9 @@ export const SalesBills: React.FC = () => {
               <div>
                 <span className="font-semibold text-slate-900 dark:text-white">{selectedBillForDetails.partyName}</span>
                 <span className="block text-[10px] text-slate-400">{selectedBillForDetails.partyPhone}</span>
+                <span className="block text-[10px] text-slate-500 font-medium mt-0.5">
+                  📍 Factory Branch: {getBranchDisplayName(selectedBillForDetails.branchId, selectedBillForDetails.branchName)}
+                </span>
               </div>
               <StatusBadge status={selectedBillForDetails.status} />
             </div>
@@ -1572,7 +1583,7 @@ export const SalesBills: React.FC = () => {
                   Customer: <span className="font-semibold text-slate-800 dark:text-slate-100">{deleteConfirmation.bill.partyName}</span>
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Branch: <span className="font-medium text-slate-700 dark:text-slate-200">{deleteConfirmation.bill.branchName || 'Main Factory'}</span> • Date: {deleteConfirmation.bill.billDate}
+                  Branch: <span className="font-medium text-slate-700 dark:text-slate-200">{getBranchDisplayName(deleteConfirmation.bill.branchId, deleteConfirmation.bill.branchName)}</span> • Date: {deleteConfirmation.bill.billDate}
                 </p>
               </div>
               <div className="text-right">
