@@ -233,12 +233,6 @@ export const loadStoredFactories = (): Factory[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Upgrade legacy mock data if it had Lahore/Karachi branches
-        const hasLegacy = parsed.some((p: any) => p.code === 'LHR-01' || p.city === 'Lahore');
-        if (hasLegacy) {
-          localStorage.setItem(FACTORIES_STORAGE_KEY, JSON.stringify(INITIAL_FACTORIES));
-          return INITIAL_FACTORIES;
-        }
         return parsed;
       }
     }

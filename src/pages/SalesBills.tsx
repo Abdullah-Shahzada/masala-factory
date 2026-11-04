@@ -253,6 +253,7 @@ export const SalesBills: React.FC = () => {
   const openAddModal = () => {
     resetForm();
     setEditingBill(null);
+    setBranchId(selectedBranchId !== 'all' ? (selectedBranchId as BranchId) : (branches[0]?.id as BranchId || 'b1'));
     setIsModalOpen(true);
   };
 
@@ -309,7 +310,7 @@ export const SalesBills: React.FC = () => {
       }
 
       const party = parties.find(p => p.id === partyId);
-      const branch = branches.find(b => b.id === branchId);
+      const branch = branches.find(b => b.id === branchId || b.code === branchId);
 
       const res = updateSalesBill(editingBill.id, {
         billNumber: billNumber.trim(),
@@ -351,7 +352,7 @@ export const SalesBills: React.FC = () => {
     }
 
     const party = parties.find(p => p.id === partyId);
-    const branch = branches.find(b => b.id === branchId);
+    const branch = branches.find(b => b.id === branchId || b.code === branchId);
 
     addSalesBill({
       billNumber: billNumber.trim(),
@@ -361,7 +362,7 @@ export const SalesBills: React.FC = () => {
       billDate,
       billTime: billTime || undefined,
       branchId,
-      branchName: branch ? branch.name : 'Main Factory',
+      branchName: branch ? branch.name : (branches[0]?.name || 'Main Factory'),
       items: items.map((i, idx) => ({ ...i, id: `bi-${Date.now()}-${idx}` })),
       grandTotal,
       receivedAmount,
