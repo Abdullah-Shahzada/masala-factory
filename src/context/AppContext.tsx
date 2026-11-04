@@ -1563,7 +1563,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newPurchase: PurchaseBill = {
       ...purchaseData,
-      id: `pb-${Date.now()}`,
+      id: generateUUID(),
       outstandingAmount,
       status,
       proofStatus: purchaseData.proofStatus || (purchaseData.proofUrl ? 'Proof Attached' : 'Not Required'),
@@ -1578,7 +1578,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // If initial payment is made upon purchase creation, record separate initial supplier payment receipt
     if (purchaseData.amountPaid > 0) {
       const initialSupplierPayment: SupplierPayment = {
-        id: `sp-init-${Date.now()}`,
+        id: generateUUID(),
         receiptNumber: `SP-INIT-${purchaseData.billNumber}`,
         supplierId: purchaseData.supplierId,
         supplierName: purchaseData.supplierName,
@@ -1657,7 +1657,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const receiptNumber = `SP-${(supplierPayments.length + 101).toString().padStart(3, '0')}`;
     const supplierPaymentRecord: SupplierPayment = {
-      id: `sp-${Date.now()}`,
+      id: generateUUID(),
       receiptNumber,
       supplierId: purchase.supplierId,
       supplierName: purchase.supplierName,

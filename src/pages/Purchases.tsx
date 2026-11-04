@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { PurchaseBill, BillItem, BranchId, SupplierPayment, ProofStatus, PaymentMethod } from '../types';
 import { formatPKR, formatDate } from '../utils/formatters';
@@ -17,17 +18,20 @@ import {
   Trash2, 
   Search, 
   Eye, 
-  Filter,
-  X,
-  MessageSquare,
-  CheckCircle2,
-  Download,
-  Share2,
-  ArrowUpDown,
-  Image as ImageIcon,
-  AlertCircle,
-  Pencil,
-  Receipt
+  Filter, 
+  X, 
+  MessageSquare, 
+  CheckCircle2, 
+  Download, 
+  Share2, 
+  ArrowUpDown, 
+  Image as ImageIcon, 
+  AlertCircle, 
+  Pencil, 
+  Receipt,
+  BookOpen,
+  ArrowDownLeft,
+  ArrowUpRight
 } from 'lucide-react';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { PartyCombobox } from '../components/common/PartyCombobox';
@@ -85,8 +89,26 @@ export const Purchases: React.FC = () => {
     docTitle: ''
   });
 
-  // Main Tab State
-  const [activeMainTab, setActiveMainTab] = useState<'bills' | 'payments'>('bills');
+  // URL Tab handling
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab');
+  const [activeMainTab, setActiveMainTab] = useState<'all' | 'bills' | 'payments'>(() => {
+    if (tabFromUrl === 'payments') return 'payments';
+    if (tabFromUrl === 'bills') return 'bills';
+    return 'all';
+  });
+
+  useEffect(() => {
+    if (tabFromUrl === 'payments') setActiveMainTab('payments');
+    else if (tabFromUrl === 'bills') setActiveMainTab('bills');
+    else if (tabFromUrl === 'all') setActiveMainTab('all');
+  }, [tabFromUrl]);
+
+  const handleSelectTab = (tab: 'all' | 'bills' | 'payments') => {
+    setActiveMainTab(tab);
+    setSearchParams(tab === 'all' ? {} : { tab });
+    setCurrentPage(1);
+  };
 
   // Supplier Payment Management State
   const [paymentSearch, setPaymentSearch] = useState('');
@@ -492,6 +514,134 @@ export const Purchases: React.FC = () => {
   const totalRecords = sortedPurchases.length;
   const paginatedPurchases = sortedPurchases.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  // Combined Journal of All Transactions (Bills & Payments)
+  const combinedTransactions = useMemo(() => {
+    const list: Array<
+      | {
+          kind: 'bill';
+          id: string;
+          bill: PurchaseBill;
+          date: string;
+          time?: string;
+          sortTimestamp: number;
+          docNumber: string;
+          supplierId: string;
+          supplierName: string;
+          branchId: string;
+          description: string;
+          billTotal: number;
+          paymentAmount: number;
+          balance: number;
+          status: string;
+          proofUrl?: string;
+          proofStatus?: ProofStatus;
+          notes?: string;
+        }
+      | {
+          kind: 'payment';
+          id: string;
+          payment: SupplierPayment;
+          date: string;
+          time?: string;
+          sortTimestamp: number;
+          docNumber: string;
+          billRefNumber: string;
+          supplierId: string;
+          supplierName: string;
+          branchId: string;
+          description: string;
+          billTotal: number;
+          paymentAmount: number;
+          balance: number;
+          status: string;
+          proofUrl?: string;
+          proofStatus?: ProofStatus;
+          notes?: string;
+        }
+    > = [];
+
+    activePurchases.forEach(pb => {
+      const timeStr = pb.billTime || (pb.createdAt?.includes('T') ? pb.createdAt.slice(11, 16) : '00:00');
+      const sortTime = new Date(`${pb.billDate}T${timeStr.length === 5 ? timeStr : '00:00'}:00`).getTime();
+      list.push({
+        kind: 'bill',
+        id: `pb-${pb.id}`,
+        bill: pb,
+        date: pb.billDate,
+        time: pb.billTime,
+        sortTimestamp: isNaN(sortTime) ? new Date(pb.billDate).getTime() : sortTime,
+        docNumber: pb.billNumber,
+        supplierId: pb.supplierId,
+        supplierName: pb.supplierName,
+        branchId: pb.branchId,
+        description: pb.items.map(i => `${i.productName} (x${i.quantity} ${i.unit})`).join(', '),
+        billTotal: pb.grandTotal,
+        paymentAmount: pb.amountPaid,
+        balance: pb.outstandingAmount,
+        status: pb.status,
+        proofUrl: pb.proofUrl,
+        proofStatus: pb.proofStatus,
+        notes: pb.notes
+      });
+    });
+
+    activeSupplierPayments.forEach(sp => {
+      const timeStr = sp.paymentTime || (sp.createdAt?.includes('T') ? sp.createdAt.slice(11, 16) : '00:00');
+      const sortTime = new Date(`${sp.paymentDate}T${timeStr.length === 5 ? timeStr : '00:00'}:00`).getTime();
+      list.push({
+        kind: 'payment',
+        id: `sp-${sp.id}`,
+        payment: sp,
+        date: sp.paymentDate,
+        time: sp.paymentTime,
+        sortTimestamp: isNaN(sortTime) ? new Date(sp.paymentDate).getTime() : sortTime,
+        docNumber: sp.receiptNumber,
+        billRefNumber: sp.purchaseBillNumber || '',
+        supplierId: sp.supplierId,
+        supplierName: sp.supplierName,
+        branchId: sp.branchId,
+        description: `Payment via ${sp.paymentMethod} ${sp.referenceNo ? `[Ref: ${sp.referenceNo}]` : ''}`,
+        billTotal: 0,
+        paymentAmount: sp.amountPaid,
+        balance: sp.remainingPayable,
+        status: 'Disbursed',
+        proofUrl: sp.proofUrl,
+        proofStatus: sp.proofStatus,
+        notes: sp.notes
+      });
+    });
+
+    return list;
+  }, [activePurchases, activeSupplierPayments]);
+
+  const filteredCombined = useMemo(() => {
+    return combinedTransactions.filter(item => {
+      if (selectedBranchId !== 'all' && item.branchId !== selectedBranchId) return false;
+      if (branchFilter !== 'all' && item.branchId !== branchFilter) return false;
+      if (supplierFilter !== 'all' && item.supplierId !== supplierFilter) return false;
+      if (startDate && item.date < startDate) return false;
+      if (endDate && item.date > endDate) return false;
+      if (billNoQuery.trim()) {
+        const q = billNoQuery.toLowerCase().trim();
+        const matchDoc = item.docNumber.toLowerCase().includes(q);
+        const matchRef = item.kind === 'payment' ? item.billRefNumber.toLowerCase().includes(q) : false;
+        const matchSup = item.supplierName.toLowerCase().includes(q);
+        const matchDesc = item.description.toLowerCase().includes(q);
+        if (!matchDoc && !matchRef && !matchSup && !matchDesc) return false;
+      }
+      return true;
+    });
+  }, [combinedTransactions, selectedBranchId, branchFilter, supplierFilter, startDate, endDate, billNoQuery]);
+
+  const sortedCombined = useMemo(() => {
+    return [...filteredCombined].sort((a, b) => {
+      return dateSortOrder === 'desc' ? b.sortTimestamp - a.sortTimestamp : a.sortTimestamp - b.sortTimestamp;
+    });
+  }, [filteredCombined, dateSortOrder]);
+
+  const totalCombinedRecords = sortedCombined.length;
+  const paginatedCombined = sortedCombined.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const handleDownloadPDF = (purchase: PurchaseBill) => {
     const doc = generatePurchaseBillPDF(purchase, companyProfile);
     doc.save(`Supplier-Purchase-${purchase.billNumber}.pdf`);
@@ -590,10 +740,22 @@ export const Purchases: React.FC = () => {
         </div>
       )}
 
-      {/* Top Tabs: Purchases Bills vs Supplier Payments */}
+      {/* Top Tabs: All Transactions vs Bills Only vs Payments Only */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 text-xs font-semibold overflow-x-auto">
         <button
-          onClick={() => setActiveMainTab('bills')}
+          onClick={() => handleSelectTab('all')}
+          className={`px-5 py-3 border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
+            activeMainTab === 'all'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          All Transactions (Ledger Journal) ({totalCombinedRecords})
+        </button>
+
+        <button
+          onClick={() => handleSelectTab('bills')}
           className={`px-5 py-3 border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeMainTab === 'bills'
               ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
@@ -601,11 +763,11 @@ export const Purchases: React.FC = () => {
           }`}
         >
           <ShoppingBag className="w-3.5 h-3.5" />
-          Purchases & Supplier Bills ({activePurchases.length})
+          Purchases & Bills Only ({activePurchases.length})
         </button>
 
         <button
-          onClick={() => setActiveMainTab('payments')}
+          onClick={() => handleSelectTab('payments')}
           className={`px-5 py-3 border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeMainTab === 'payments'
               ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
@@ -616,6 +778,367 @@ export const Purchases: React.FC = () => {
           Supplier Payment Receipts ({activeSupplierPayments.length})
         </button>
       </div>
+
+      {/* ALL TRANSACTIONS (LEDGER JOURNAL) TAB */}
+      {activeMainTab === 'all' && (
+        <div className="space-y-4">
+          {/* Filter Bar */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="relative w-full md:w-96">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by bill #, voucher #, supplier, or items..."
+                value={billNoQuery}
+                onChange={(e) => {
+                  setBillNoQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+              <select
+                value={supplierFilter}
+                onChange={(e) => {
+                  setSupplierFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="all">All Suppliers</option>
+                {parties.filter(p => p.type === 'Supplier' || p.type === 'Both').map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors shadow-xs whitespace-nowrap"
+                title="Toggle Date Sort Order"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>{dateSortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
+              </button>
+
+              <div className="text-xs text-slate-500 font-medium whitespace-nowrap ml-2">
+                Showing <span className="font-bold text-slate-900 dark:text-white">{totalCombinedRecords}</span> Entries
+              </div>
+            </div>
+          </div>
+
+          {/* Transactions Table & Mobile Cards */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden space-y-3">
+            {/* Mobile View */}
+            <div className="block sm:hidden space-y-3">
+              {paginatedCombined.length > 0 ? (
+                paginatedCombined.map(item => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 space-y-2.5 shadow-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {item.kind === 'bill' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300">
+                            <ShoppingBag className="w-3 h-3" /> Purchase Bill
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
+                            <Receipt className="w-3 h-3" /> Supplier Payment
+                          </span>
+                        )}
+                        <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                          {item.docNumber}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500">{formatDate(item.date)}</span>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {item.supplierName}
+                        </h4>
+                        {item.kind === 'payment' && (
+                          <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 block mt-0.5">
+                            Against Bill: {item.billRefNumber}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        {item.kind === 'bill' ? (
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Total</span>
+                            <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                              {formatPKR(item.billTotal)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block">Disbursed</span>
+                            <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                              {formatPKR(item.paymentAmount)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate bg-white/60 dark:bg-slate-800/80 p-1.5 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+                      {item.description}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-xs">
+                      <span className="text-slate-500 text-[11px]">
+                        Remaining Balance: <strong className="text-rose-600">{formatPKR(item.balance)}</strong>
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {item.kind === 'bill' ? (
+                          <>
+                            {item.balance > 0 && (
+                              <button
+                                onClick={() => {
+                                  setPayModal({ isOpen: true, purchase: item.bill });
+                                  setSupplierPayAmount(item.balance);
+                                }}
+                                className="px-2 py-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
+                              >
+                                Pay
+                              </button>
+                            )}
+                            <button onClick={() => openEditModal(item.bill)} className="p-1 rounded text-amber-600">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setDeleteModal({ isOpen: true, purchase: item.bill })} className="p-1 rounded text-rose-600">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDownloadPDF(item.bill)} className="p-1 rounded text-indigo-600">
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => setSelectedReceipt(item.payment)} className="p-1 rounded text-slate-600">
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleOpenEditPayment(item.payment)} className="p-1 rounded text-amber-600">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setDeletePaymentModal({ isOpen: true, payment: item.payment })} className="p-1 rounded text-rose-600">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDownloadSupplierPaymentPDF(item.payment)} className="p-1 rounded text-indigo-600">
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400">No transactions recorded.</div>
+              )}
+            </div>
+
+            {/* Desktop Table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="p-3">Type</th>
+                    <th className="p-3">Doc / Bill #</th>
+                    <th className="p-3">Date & Time</th>
+                    <th className="p-3">Supplier Name</th>
+                    <th className="p-3">Factory Branch</th>
+                    <th className="p-3">Details / Items</th>
+                    <th className="p-3 text-right">Bill Total (Debit)</th>
+                    <th className="p-3 text-right">Paid (Credit)</th>
+                    <th className="p-3 text-right">Remaining Balance</th>
+                    <th className="p-3 text-center">Proof</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {paginatedCombined.length > 0 ? (
+                    paginatedCombined.map(item => {
+                      const branchObj = branches.find(b => b.id === item.branchId);
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <td className="p-3 whitespace-nowrap">
+                            {item.kind === 'bill' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                                <ShoppingBag className="w-3 h-3" /> Purchase Bill
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                                <Receipt className="w-3 h-3" /> Supplier Payment
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 font-mono whitespace-nowrap">
+                            <span className="font-bold text-slate-900 dark:text-white">{item.docNumber}</span>
+                            {item.kind === 'payment' && (
+                              <span className="text-[10px] text-slate-400 block font-mono">
+                                Bill: {item.billRefNumber}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                            <div>{formatDate(item.date)}</div>
+                            {item.time && <div className="text-[10px] text-slate-400">{item.time}</div>}
+                          </td>
+                          <td className="p-3 font-semibold text-slate-900 dark:text-white">
+                            {item.supplierName}
+                          </td>
+                          <td className="p-3 text-slate-500 whitespace-nowrap">
+                            {branchObj?.name || 'Main Factory'}
+                          </td>
+                          <td className="p-3 text-slate-600 dark:text-slate-400 max-w-xs truncate" title={item.description}>
+                            {item.description}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                            {item.billTotal > 0 ? formatPKR(item.billTotal) : '-'}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold whitespace-nowrap">
+                            {item.paymentAmount > 0 ? (
+                              <span className="text-emerald-600 dark:text-emerald-400">
+                                {formatPKR(item.paymentAmount)}
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold whitespace-nowrap">
+                            {item.balance > 0 ? (
+                              <span className="text-rose-600 dark:text-rose-400">
+                                {formatPKR(item.balance)}
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600">Rs. 0</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            <ProofBadge
+                              status={item.proofStatus || 'Not Required'}
+                              proofUrl={item.proofUrl}
+                              onClick={item.proofUrl ? () => setProofModal({ isOpen: true, url: item.proofUrl, docNo: item.docNumber }) : undefined}
+                            />
+                          </td>
+                          <td className="p-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              {item.kind === 'bill' ? (
+                                <>
+                                  {item.balance > 0 && (
+                                    <button
+                                      onClick={() => {
+                                        setPayModal({ isOpen: true, purchase: item.bill });
+                                        setSupplierPayAmount(item.balance);
+                                      }}
+                                      className="px-2 py-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 rounded-lg shadow-xs"
+                                    >
+                                      Pay Supplier
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => openEditModal(item.bill)}
+                                    className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/60"
+                                    title="Edit Purchase Bill"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteModal({ isOpen: true, purchase: item.bill })}
+                                    className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60"
+                                    title="Delete Purchase Bill"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDownloadPDF(item.bill)}
+                                    className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                                    title="Download PDF"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenWhatsApp(item.bill)}
+                                    className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/60"
+                                    title="WhatsApp Share"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => setSelectedReceipt(item.payment)}
+                                    className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                    title="View Voucher Details"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenEditPayment(item.payment)}
+                                    className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/60"
+                                    title="Edit Supplier Payment"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletePaymentModal({ isOpen: true, payment: item.payment })}
+                                    className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60"
+                                    title="Delete Supplier Payment"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDownloadSupplierPaymentPDF(item.payment)}
+                                    className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                                    title="Download Payment Voucher PDF"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenSupplierPaymentWhatsApp(item.payment)}
+                                    className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/60"
+                                    title="WhatsApp Share"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={11} className="p-8 text-center text-slate-400">
+                        No transactions found matching criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            <Pagination
+              currentPage={currentPage}
+              totalRecords={totalCombinedRecords}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* PURCHASES BILLS TAB */}
       {activeMainTab === 'bills' && (

@@ -67,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     },
     { name: 'Purchases', path: '/purchases', icon: ShoppingBag },
+    { name: 'Supplier Payments', path: '/purchases?tab=payments', icon: Receipt },
     { name: 'Expenses', path: '/expenses', icon: Wallet },
     { name: 'Contacts / Parties', path: '/contacts', icon: Users },
     { name: 'Factories', path: '/factories', icon: Building2 },

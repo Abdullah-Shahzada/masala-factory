@@ -876,6 +876,12 @@ app.post('/api/supplier-payments', async (req, res) => {
     const factoryId = await ensureFactoryId(conn, sp.branchId);
     const supplierId = await ensurePartyId(conn, sp.supplierId, sp.supplierName, undefined, 'Supplier');
 
+    let purchaseId = sp.purchaseBillId && sp.purchaseBillId.length === 36 ? sp.purchaseBillId : null;
+    if (!purchaseId && sp.purchaseBillNumber) {
+      const [pbRows]: any = await conn.query('SELECT id FROM purchases WHERE bill_number = ? LIMIT 1', [sp.purchaseBillNumber]);
+      if (pbRows && pbRows.length > 0) purchaseId = pbRows[0].id;
+    }
+
     await conn.query(
       `INSERT INTO supplier_payments (id, factory_id, purchase_id, receipt_number, purchase_bill_number, supplier_id, supplier_name, amount, payment_date, payment_time, payment_method, reference_no, proof_url, proof_status, remaining_payable, notes, is_deleted, deleted_at, deleted_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -887,7 +893,7 @@ app.post('/api/supplier-payments', async (req, res) => {
        proof_url = VALUES(proof_url), proof_status = VALUES(proof_status),
        remaining_payable = VALUES(remaining_payable), notes = VALUES(notes),
        is_deleted = VALUES(is_deleted), deleted_at = VALUES(deleted_at), deleted_by = VALUES(deleted_by)`,
-      [id, factoryId, sp.purchaseBillId?.length === 36 ? sp.purchaseBillId : null, sp.receiptNumber, sp.purchaseBillNumber || `PB-${sp.receiptNumber}`, supplierId, sp.supplierName, sp.amountPaid, sp.paymentDate, sp.paymentTime || null, sp.paymentMethod, sp.referenceNo || null, sp.proofUrl || null, sp.proofStatus || 'Verified', sp.remainingPayable || 0, sp.notes || null, sp.isDeleted ? 1 : 0, sp.deletedAt || null, sp.deletedBy || null]
+      [id, factoryId, purchaseId, sp.receiptNumber, sp.purchaseBillNumber || `PB-${sp.receiptNumber}`, supplierId, sp.supplierName, sp.amountPaid, sp.paymentDate, sp.paymentTime || null, sp.paymentMethod, sp.referenceNo || null, sp.proofUrl || null, sp.proofStatus || 'Verified', sp.remainingPayable || 0, sp.notes || null, sp.isDeleted ? 1 : 0, sp.deletedAt || null, sp.deletedBy || null]
     );
     res.json({ success: true, id });
   } catch (err: any) {
