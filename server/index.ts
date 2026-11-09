@@ -69,6 +69,329 @@ app.get('/api/health', async (_req, res) => {
 });
 
 // -------------------------------------------------------------
+// BATCH FULL SYNC (Combines 11 roundtrips into 1 single call to save Vercel quotas)
+// -------------------------------------------------------------
+app.get('/api/sync-all', async (_req, res) => {
+  try {
+    const [
+      [factoriesRows],
+      [profileRows],
+      [partiesRows],
+      [productsRows],
+      [billsRows],
+      [billItemsRows],
+      [paymentsRows],
+      [paymentAllocsRows],
+      [purchasesRows],
+      [purchaseItemsRows],
+      [supplierPaymentsRows],
+      [expensesRows],
+      [schedulesRows],
+      [scheduleInstsRows],
+      [notificationsRows]
+    ]: any = await Promise.all([
+      pool.query('SELECT * FROM factories ORDER BY created_at ASC'),
+      pool.query('SELECT * FROM company_profiles ORDER BY updated_at DESC, created_at DESC LIMIT 1'),
+      pool.query('SELECT * FROM parties ORDER BY created_at DESC'),
+      pool.query('SELECT * FROM products ORDER BY name ASC'),
+      pool.query(`
+        SELECT b.*, f.name AS branch_name 
+        FROM sales_bills b 
+        LEFT JOIN factories f ON b.factory_id = f.id 
+        ORDER BY b.bill_date DESC, b.created_at DESC
+      `),
+      pool.query('SELECT * FROM sales_bill_items'),
+      pool.query('SELECT * FROM payments_received ORDER BY payment_date DESC, created_at DESC'),
+      pool.query('SELECT * FROM payment_allocations'),
+      pool.query('SELECT * FROM purchases ORDER BY bill_date DESC, created_at DESC'),
+      pool.query('SELECT * FROM purchase_items'),
+      pool.query('SELECT * FROM supplier_payments ORDER BY payment_date DESC, created_at DESC'),
+      pool.query('SELECT * FROM expenses ORDER BY expense_date DESC, created_at DESC'),
+      pool.query('SELECT * FROM payment_schedules ORDER BY due_date ASC'),
+      pool.query('SELECT * FROM schedule_installments'),
+      pool.query('SELECT * FROM notifications WHERE is_dismissed = 0 ORDER BY created_at DESC')
+    ]);
+
+    // Map sales bill items
+    const billItemsMap: Record<string, any[]> = {};
+    for (const item of billItemsRows) {
+      if (!billItemsMap[item.bill_id]) billItemsMap[item.bill_id] = [];
+      billItemsMap[item.bill_id].push({
+        id: item.id,
+        productId: item.product_id || '',
+        productName: item.product_name,
+        quantity: Number(item.quantity),
+        unit: item.unit || 'KG',
+        rate: Number(item.rate),
+        lineTotal: Number(item.amount)
+      });
+    }
+
+    // Map payment allocations
+    const allocsMap: Record<string, any[]> = {};
+    for (const a of paymentAllocsRows) {
+      if (!allocsMap[a.payment_id]) allocsMap[a.payment_id] = [];
+      allocsMap[a.payment_id].push({
+        billId: a.bill_id,
+        billNumber: a.bill_number,
+        amount: Number(a.allocated_amount)
+      });
+    }
+
+    // Map purchase items
+    const purchaseItemsMap: Record<string, any[]> = {};
+    for (const item of purchaseItemsRows) {
+      if (!purchaseItemsMap[item.purchase_id]) purchaseItemsMap[item.purchase_id] = [];
+      purchaseItemsMap[item.purchase_id].push({
+        id: item.id,
+        productId: '',
+        productName: item.item_name || item.product_name || '',
+        quantity: Number(item.quantity),
+        unit: item.unit || 'KG',
+        rate: Number(item.rate),
+        lineTotal: Number(item.amount)
+      });
+    }
+
+    // Map schedule installments
+    const instsMap: Record<string, any[]> = {};
+    for (const ins of scheduleInstsRows) {
+      if (!instsMap[ins.schedule_id]) instsMap[ins.schedule_id] = [];
+      instsMap[ins.schedule_id].push({
+        id: ins.id,
+        installmentNo: ins.installment_number,
+        amount: Number(ins.amount),
+        dueDate: ins.due_date instanceof Date ? ins.due_date.toISOString().split('T')[0] : ins.due_date,
+        paidAmount: Number(ins.paid_amount || 0),
+        status: ins.status,
+        notes: ins.notes || undefined
+      });
+    }
+
+    const factories = factoriesRows.map((f: any) => ({
+      id: f.id,
+      code: f.code,
+      name: f.name,
+      city: f.city,
+      address: f.address,
+      phone: f.phone,
+      phone2: f.phone2 || undefined,
+      licenseNumber: f.license_number || undefined,
+      ownerName: f.owner_name || undefined,
+      licenseCategory: f.license_category || undefined,
+      status: f.status,
+      isMain: Boolean(f.is_main),
+      notes: f.notes || undefined,
+      createdAt: f.created_at,
+      updatedAt: f.updated_at
+    }));
+
+    const companyProfile = profileRows.length > 0 ? {
+      name: profileRows[0].name,
+      address: profileRows[0].address,
+      city: profileRows[0].city,
+      phone: profileRows[0].phone,
+      email: profileRows[0].email || undefined,
+      taxNumber: profileRows[0].tax_number || undefined,
+      logoUrl: profileRows[0].logo_url || undefined
+    } : null;
+
+    const parties = partiesRows.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      companyName: p.company_name || undefined,
+      phone: p.phone,
+      whatsapp: p.whatsapp || p.phone,
+      address: p.address || '',
+      city: p.city || '',
+      type: p.type,
+      openingBalance: Number(p.opening_balance) || 0,
+      currentBalance: Number(p.current_balance) || 0,
+      balanceType: p.balance_type || 'receivable',
+      status: p.status || 'Active',
+      creditLimit: p.credit_limit !== null ? Number(p.credit_limit) : undefined,
+      paymentTerms: p.payment_terms || undefined,
+      notes: p.notes || undefined,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at
+    }));
+
+    const products = productsRows.map((pr: any) => ({
+      id: pr.id,
+      name: pr.name,
+      category: pr.category,
+      unit: pr.unit || 'KG',
+      defaultRate: Number(pr.default_rate) || 0,
+      stockQty: pr.stock_qty !== null ? Number(pr.stock_qty) : undefined,
+      description: pr.description || undefined
+    }));
+
+    const salesBills = billsRows.map((b: any) => ({
+      id: b.id,
+      billNumber: b.bill_number,
+      partyId: b.party_id,
+      partyName: b.party_name,
+      partyPhone: b.party_phone || '',
+      billDate: b.bill_date instanceof Date ? b.bill_date.toISOString().split('T')[0] : b.bill_date,
+      billTime: b.bill_time || undefined,
+      branchId: b.factory_id,
+      branchName: b.branch_name || 'Main Factory',
+      items: billItemsMap[b.id] || [],
+      grandTotal: Number(b.grand_total),
+      receivedAmount: Number(b.received_amount) || 0,
+      remainingAmount: Number(b.remaining_amount) || 0,
+      status: b.status,
+      proofUrl: b.proof_url || undefined,
+      proofStatus: b.proof_status || undefined,
+      notes: b.notes || undefined,
+      createdAt: b.created_at,
+      isDeleted: Boolean(b.is_deleted),
+      deletedAt: b.deleted_at || undefined,
+      deletedBy: b.deleted_by || undefined
+    }));
+
+    const paymentsReceived = paymentsRows.map((p: any) => ({
+      id: p.id,
+      receiptNumber: p.receipt_number,
+      partyId: p.party_id,
+      partyName: p.party_name,
+      partyPhone: p.party_phone || undefined,
+      amountReceived: Number(p.amount),
+      paymentDate: p.payment_date instanceof Date ? p.payment_date.toISOString().split('T')[0] : p.payment_date,
+      paymentTime: p.payment_time || undefined,
+      paymentMethod: p.payment_method,
+      referenceNo: p.reference_no || undefined,
+      proofUrl: p.proof_url || undefined,
+      proofStatus: p.proof_status || 'Verified',
+      status: p.status || 'Completed',
+      isInitialPayment: Boolean(p.is_initial_payment),
+      notes: p.notes || undefined,
+      branchId: p.factory_id,
+      createdAt: p.created_at,
+      allocatedBillIds: (allocsMap[p.id] || []).map((a: any) => a.billId),
+      allocations: allocsMap[p.id] || [],
+      isDeleted: Boolean(p.is_deleted),
+      deletedAt: p.deleted_at || undefined,
+      deletedBy: p.deleted_by || undefined
+    }));
+
+    const purchases = purchasesRows.map((p: any) => ({
+      id: p.id,
+      billNumber: p.bill_number,
+      supplierId: p.supplier_id,
+      supplierName: p.supplier_name,
+      billDate: p.bill_date instanceof Date ? p.bill_date.toISOString().split('T')[0] : p.bill_date,
+      dueDate: p.bill_date instanceof Date ? p.bill_date.toISOString().split('T')[0] : p.bill_date,
+      branchId: p.factory_id,
+      items: purchaseItemsMap[p.id] || [],
+      grandTotal: Number(p.grand_total),
+      amountPaid: Number(p.paid_amount) || 0,
+      outstandingAmount: Number(p.outstanding_amount) || 0,
+      status: p.status,
+      proofUrl: p.proof_url || undefined,
+      proofStatus: p.proof_status || undefined,
+      notes: p.notes || undefined,
+      createdAt: p.created_at,
+      isDeleted: Boolean(p.is_deleted),
+      deletedAt: p.deleted_at || undefined,
+      deletedBy: p.deleted_by || undefined
+    }));
+
+    const supplierPayments = supplierPaymentsRows.map((sp: any) => ({
+      id: sp.id,
+      receiptNumber: sp.receipt_number,
+      supplierId: sp.supplier_id,
+      supplierName: sp.supplier_name,
+      purchaseBillId: sp.purchase_id || '',
+      purchaseBillNumber: sp.purchase_bill_number,
+      paymentDate: sp.payment_date instanceof Date ? sp.payment_date.toISOString().split('T')[0] : sp.payment_date,
+      paymentTime: sp.payment_time || undefined,
+      amountPaid: Number(sp.amount),
+      paymentMethod: sp.payment_method,
+      referenceNo: sp.reference_no || undefined,
+      proofUrl: sp.proof_url || undefined,
+      proofStatus: sp.proof_status || 'Verified',
+      branchId: sp.factory_id,
+      remainingPayable: Number(sp.remaining_payable || 0),
+      notes: sp.notes || undefined,
+      createdAt: sp.created_at,
+      isDeleted: Boolean(sp.is_deleted),
+      deletedAt: sp.deleted_at || undefined,
+      deletedBy: sp.deleted_by || undefined
+    }));
+
+    const expenses = expensesRows.map((e: any) => ({
+      id: e.id,
+      expenseNumber: e.expense_number,
+      title: e.title || e.category,
+      category: e.category,
+      amount: Number(e.amount),
+      expenseDate: e.expense_date instanceof Date ? e.expense_date.toISOString().split('T')[0] : e.expense_date,
+      expenseTime: e.expense_time || undefined,
+      paidTo: e.paid_to,
+      paymentMethod: e.payment_method,
+      referenceNo: e.reference_no || undefined,
+      proofUrl: e.proof_url || undefined,
+      proofStatus: e.proof_status || undefined,
+      notes: e.notes || e.description || undefined,
+      branchId: e.factory_id,
+      createdAt: e.created_at,
+      isDeleted: Boolean(e.is_deleted),
+      deletedAt: e.deleted_at || undefined,
+      deletedBy: e.deleted_by || undefined
+    }));
+
+    const schedules = schedulesRows.map((s: any) => ({
+      id: s.id,
+      type: s.type === 'Pay' || s.type === 'ToPay' ? 'ToPay' : 'ToReceive',
+      partyId: s.party_id,
+      partyName: s.party_name,
+      partyPhone: s.party_phone || undefined,
+      relatedBillNumber: s.related_bill_number || undefined,
+      dueDate: s.due_date instanceof Date ? s.due_date.toISOString().split('T')[0] : s.due_date,
+      scheduledAmount: Number(s.scheduled_amount || 0),
+      paidReceivedAmount: Number(s.paid_received_amount || 0),
+      remainingAmount: Number(s.remaining_amount || s.scheduled_amount || 0),
+      branchId: s.factory_id,
+      status: s.status,
+      notes: s.notes || s.description || undefined,
+      parentScheduleId: s.parent_schedule_id || undefined,
+      installmentNo: s.installment_no || undefined,
+      installments: instsMap[s.id] && instsMap[s.id].length > 0 ? instsMap[s.id] : undefined,
+      isDeleted: Boolean(s.is_deleted),
+      deletedAt: s.deleted_at || undefined,
+      deletedBy: s.deleted_by || undefined
+    }));
+
+    const notifications = notificationsRows.map((n: any) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      date: n.date,
+      type: n.type,
+      read: Boolean(n.is_read),
+      link: n.link || undefined
+    }));
+
+    res.json({
+      factories,
+      companyProfile,
+      parties,
+      products,
+      salesBills,
+      paymentsReceived,
+      purchases,
+      supplierPayments,
+      expenses,
+      schedules,
+      notifications
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
 // AUTHENTICATION & CROSS-DEVICE SESSION INVALIDATION
 // -------------------------------------------------------------
 app.post('/api/auth/login', async (req, res) => {

@@ -1427,3 +1427,15 @@ export const markNotificationReadInDatabase = async (id: string): Promise<boolea
   }
   return true;
 };
+
+/* =========================================================================
+   12. CONSOLIDATED BATCH SYNC MODULE
+   ========================================================================= */
+
+export const fetchFullSyncFromDatabase = async (): Promise<mysqlService.FullSyncData | null> => {
+  if (isUsingMySQL()) {
+    const full = await mysqlService.fetchSyncAllFromMySQL();
+    if (full) return full;
+  }
+  return null;
+};

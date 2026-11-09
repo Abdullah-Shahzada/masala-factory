@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 import { loginMySQL, changePasswordMySQL, verifySessionMySQL } from '../services/mysqlService';
@@ -127,12 +127,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isSupabase]);
 
-  // Cross-device session check: if password changes on any mobile/desktop, auto-logout
+  // Cross-device session check: throttled focus check + relaxed 5-minute fallback
+  const lastSessionCheckRef = useRef<number>(0);
   useEffect(() => {
     if (isSupabase || !user || !user.username || user.tokenVersion === undefined) return;
 
     const checkSession = async () => {
       try {
+        lastSessionCheckRef.current = Date.now();
         const res = await verifySessionMySQL(user.username, user.tokenVersion || 1);
         if (res && res.valid === false) {
           console.warn('[Auth] Auto-logout: Password changed on another device.');
@@ -144,11 +146,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    window.addEventListener('focus', checkSession);
-    const interval = setInterval(checkSession, 25000);
+    const handleFocus = () => {
+      // Cooldown of 2 minutes (120,000 ms) to prevent spamming Vercel functions on tab switching
+      const now = Date.now();
+      if (now - lastSessionCheckRef.current < 120000) return;
+      checkSession();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    // Relaxed 5-minute interval only when tab is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastSessionCheckRef.current >= 120000) {
+          checkSession();
+        }
+      }
+    }, 300000);
 
     return () => {
-      window.removeEventListener('focus', checkSession);
+      window.removeEventListener('focus', handleFocus);
       clearInterval(interval);
     };
   }, [user, isSupabase]);

@@ -65,7 +65,8 @@ import {
   fetchNotificationsFromDatabase,
   dismissNotificationInDatabase,
   clearAllNotificationsInDatabase,
-  markNotificationReadInDatabase
+  markNotificationReadInDatabase,
+  fetchFullSyncFromDatabase
 } from '../services/supabaseService';
 import { generateUUID } from '../utils/uuid';
 
@@ -605,6 +606,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // -------------------------------------------------------------
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const isSyncingRef = useRef<boolean>(false);
+  const lastSyncTimeRef = useRef<number>(0);
 
   // Cross-Tab Broadcast Channel (instant sync across tabs on same device)
   const notifyBroadcastSync = useCallback(() => {
@@ -625,94 +627,129 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsSyncing(true);
 
     try {
-      const [
-        dbFactories,
-        dbParties,
-        dbProducts,
-        dbBills,
-        dbPayments,
-        dbPurchases,
-        dbExpenses,
-        dbProfile,
-        dbSupplierPayments,
-        dbSchedules,
-        dbNotifications
-      ] = await Promise.all([
-        fetchFactoriesFromSupabase(),
-        fetchPartiesFromSupabase(),
-        fetchProductsFromSupabase(),
-        fetchSalesBillsFromSupabase(),
-        fetchPaymentsReceivedFromSupabase(),
-        fetchPurchasesFromSupabase(),
-        fetchExpensesFromSupabase(),
-        fetchCompanyProfileFromSupabase(),
-        fetchSupplierPaymentsFromSupabase(),
-        fetchPaymentSchedulesFromSupabase(),
-        fetchNotificationsFromDatabase()
-      ]);
+      // 1. Attempt consolidated batch sync first (1 single roundtrip instead of 11)
+      const fullSync = await fetchFullSyncFromDatabase();
 
-      if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
-
-      if (dbParties && dbParties.length > 0) {
-        setParties(dbParties);
-      } else if (isInitial && isDatabaseConnected()) {
-        const seededParties: Party[] = [];
-        for (const p of INITIAL_PARTIES) {
-          const uuid = await insertPartyToSupabase(p);
-          seededParties.push({ ...p, id: uuid || p.id });
+      if (fullSync) {
+        if (fullSync.factories && fullSync.factories.length > 0) setFactories(fullSync.factories);
+        if (fullSync.parties && fullSync.parties.length > 0) setParties(fullSync.parties);
+        if (fullSync.products && fullSync.products.length > 0) setProducts(fullSync.products);
+        if (fullSync.salesBills !== null) setSalesBills(fullSync.salesBills);
+        if (fullSync.paymentsReceived !== null) setPaymentsReceived(fullSync.paymentsReceived);
+        if (fullSync.purchases !== null) setPurchases(fullSync.purchases);
+        if (fullSync.expenses !== null) setExpenses(fullSync.expenses);
+        if (fullSync.companyProfile && fullSync.companyProfile.name) {
+          setCompanyProfile(prev => {
+            const merged: CompanyProfile = {
+              ...prev,
+              ...fullSync.companyProfile!,
+              logoUrl: fullSync.companyProfile!.logoUrl || prev.logoUrl
+            };
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.setItem(SAVED_PROFILE_KEY, JSON.stringify(merged));
+                if (merged.name) localStorage.setItem('MF_BUSINESS_NAME', merged.name);
+              }
+            } catch {}
+            return merged;
+          });
+          setBusinessName(fullSync.companyProfile.name);
         }
-        if (seededParties.length > 0) setParties(seededParties);
-      }
+        if (fullSync.supplierPayments !== null) setSupplierPayments(fullSync.supplierPayments);
+        if (fullSync.schedules !== null) setScheduleItems(fullSync.schedules);
+        if (fullSync.notifications !== null) setNotifications(fullSync.notifications);
+      } else {
+        // Fallback: Individual endpoints
+        const [
+          dbFactories,
+          dbParties,
+          dbProducts,
+          dbBills,
+          dbPayments,
+          dbPurchases,
+          dbExpenses,
+          dbProfile,
+          dbSupplierPayments,
+          dbSchedules,
+          dbNotifications
+        ] = await Promise.all([
+          fetchFactoriesFromSupabase(),
+          fetchPartiesFromSupabase(),
+          fetchProductsFromSupabase(),
+          fetchSalesBillsFromSupabase(),
+          fetchPaymentsReceivedFromSupabase(),
+          fetchPurchasesFromSupabase(),
+          fetchExpensesFromSupabase(),
+          fetchCompanyProfileFromSupabase(),
+          fetchSupplierPaymentsFromSupabase(),
+          fetchPaymentSchedulesFromSupabase(),
+          fetchNotificationsFromDatabase()
+        ]);
 
-      if (dbProducts && dbProducts.length > 0) {
-        setProducts(dbProducts);
-      } else if (isInitial && isDatabaseConnected()) {
-        const seededProducts: Product[] = [];
-        for (const pr of INITIAL_PRODUCTS) {
-          const uuid = await insertProductToSupabase(pr);
-          seededProducts.push({ ...pr, id: uuid || pr.id });
+        if (dbFactories && dbFactories.length > 0) setFactories(dbFactories);
+
+        if (dbParties && dbParties.length > 0) {
+          setParties(dbParties);
+        } else if (isInitial && isDatabaseConnected()) {
+          const seededParties: Party[] = [];
+          for (const p of INITIAL_PARTIES) {
+            const uuid = await insertPartyToSupabase(p);
+            seededParties.push({ ...p, id: uuid || p.id });
+          }
+          if (seededParties.length > 0) setParties(seededParties);
         }
-        if (seededProducts.length > 0) setProducts(seededProducts);
-      }
 
-      if (dbBills !== null) setSalesBills(dbBills);
-      if (dbPayments !== null) setPaymentsReceived(dbPayments);
-      if (dbPurchases !== null) setPurchases(dbPurchases);
-      if (dbExpenses !== null) setExpenses(dbExpenses);
-      if (dbProfile && dbProfile.name) {
-        setCompanyProfile(prev => {
-          const merged: CompanyProfile = {
-            ...prev,
-            ...dbProfile,
-            logoUrl: dbProfile.logoUrl || prev.logoUrl
-          };
-          try {
-            if (typeof window !== 'undefined' && window.localStorage) {
-              localStorage.setItem(SAVED_PROFILE_KEY, JSON.stringify(merged));
-              if (merged.name) localStorage.setItem('MF_BUSINESS_NAME', merged.name);
-            }
-          } catch {}
-          return merged;
-        });
-        setBusinessName(dbProfile.name);
+        if (dbProducts && dbProducts.length > 0) {
+          setProducts(dbProducts);
+        } else if (isInitial && isDatabaseConnected()) {
+          const seededProducts: Product[] = [];
+          for (const pr of INITIAL_PRODUCTS) {
+            const uuid = await insertProductToSupabase(pr);
+            seededProducts.push({ ...pr, id: uuid || pr.id });
+          }
+          if (seededProducts.length > 0) setProducts(seededProducts);
+        }
+
+        if (dbBills !== null) setSalesBills(dbBills);
+        if (dbPayments !== null) setPaymentsReceived(dbPayments);
+        if (dbPurchases !== null) setPurchases(dbPurchases);
+        if (dbExpenses !== null) setExpenses(dbExpenses);
+        if (dbProfile && dbProfile.name) {
+          setCompanyProfile(prev => {
+            const merged: CompanyProfile = {
+              ...prev,
+              ...dbProfile,
+              logoUrl: dbProfile.logoUrl || prev.logoUrl
+            };
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.setItem(SAVED_PROFILE_KEY, JSON.stringify(merged));
+                if (merged.name) localStorage.setItem('MF_BUSINESS_NAME', merged.name);
+              }
+            } catch {}
+            return merged;
+          });
+          setBusinessName(dbProfile.name);
+        }
+        if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
+        if (dbSchedules !== null) setScheduleItems(dbSchedules);
+        if (dbNotifications !== null) setNotifications(dbNotifications);
       }
-      if (dbSupplierPayments !== null) setSupplierPayments(dbSupplierPayments);
-      if (dbSchedules !== null) setScheduleItems(dbSchedules);
-      if (dbNotifications !== null) setNotifications(dbNotifications);
     } catch (err) {
       console.warn('[Sync] Could not load live data from database:', err);
     } finally {
+      lastSyncTimeRef.current = Date.now();
       isSyncingRef.current = false;
       setIsSyncing(false);
     }
   }, []);
 
-  // Multi-Device Auto-Sync (Initial Mount, Focus, Visibility Change, and Periodic 12s Heartbeat)
+  // Multi-Device Auto-Sync (Initial Mount, Focus Cooldown, and 3-Minute Idle Fallback)
   useEffect(() => {
     // 1. Initial Sync
     syncWithDatabase(true);
 
-    // 2. BroadcastChannel Listener for Instant Multi-Tab Sync
+    // 2. BroadcastChannel Listener for Instant Cross-Tab Sync (0 network requests)
     let channel: BroadcastChannel | null = null;
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
@@ -727,13 +764,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 3. Sync whenever user switches back to this window / tab (Focus or Visibility Change)
+    // 3. Sync whenever user switches back to this window / tab (with 45s cooldown)
     const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastSyncTimeRef.current < 45000) return;
       syncWithDatabase(false);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastSyncTimeRef.current < 45000) return;
         syncWithDatabase(false);
       }
     };
@@ -741,10 +782,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // 4. Background Heartbeat every 12 seconds so all laptops and mobile PWAs stay in sync
+    // 4. Relaxed periodic fallback sync every 3 minutes (180s) ONLY if tab is visible
     const intervalId = setInterval(() => {
-      syncWithDatabase(false);
-    }, 12000);
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastSyncTimeRef.current >= 45000) {
+          syncWithDatabase(false);
+        }
+      }
+    }, 180000);
 
     return () => {
       window.removeEventListener('focus', handleFocus);

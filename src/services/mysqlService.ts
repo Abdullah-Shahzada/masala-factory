@@ -335,3 +335,22 @@ export const restoreRecordMySQL = async (
   const res = await request<{ success: boolean }>(endpoint, { method: 'POST' });
   return Boolean(res?.success);
 };
+
+// 13. CONSOLIDATED BATCH SYNC (Reduces 11 roundtrips into 1 single call to preserve Vercel free tier limits)
+export interface FullSyncData {
+  factories: Factory[];
+  companyProfile: CompanyProfile | null;
+  parties: Party[];
+  products: Product[];
+  salesBills: SalesBill[];
+  paymentsReceived: PaymentReceived[];
+  purchases: PurchaseBill[];
+  supplierPayments: SupplierPayment[];
+  expenses: Expense[];
+  schedules: PaymentScheduleItem[];
+  notifications: NotificationItem[];
+}
+
+export const fetchSyncAllFromMySQL = async (): Promise<FullSyncData | null> => {
+  return request<FullSyncData>('/sync-all');
+};
